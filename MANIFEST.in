@@ -1,0 +1,2 @@
+include shapez2/gameFiles/*.json
+exclude shapez2/gameFiles/extractGameFiles.py

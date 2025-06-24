@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools >= 80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shapez2"
+version = "0.0.1"
+authors = [
+  {name = "Loupau 38"},
+]
+description = "A package to code tools for shapez 2"
+readme = "README.md"
+requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+dependencies = [
+    "Pillow>=11.1.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/Loupau38/shapez2-python"
