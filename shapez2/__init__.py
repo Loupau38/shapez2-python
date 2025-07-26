@@ -1,7 +1,9 @@
 from . import (
     blueprints,
+    blueprintsExtraData,
     buildings,
-    gameData,
+    gameObjects,
+    ingameData,
     islands,
     pygamePIL,
     research,

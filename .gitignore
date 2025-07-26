@@ -1,2 +1,3 @@
 dist/
 *.egg-info
+shapez2/__pycache__

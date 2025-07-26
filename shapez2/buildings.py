@@ -3,56 +3,76 @@ from . import utils, translations
 import json
 import importlib.resources
 
-class InternalVariantList:
-    def __init__(self,id:str,title:str) -> None:
+class BuildingVariant:
+
+    def __init__(self,id:str,title:translations.MaybeTranslationString) -> None:
         self.id = id
         self.title = title
-        self.internalVariants:list[Building] = []
+        self.internalVariants:list[BuildingInternalVariant] = []
 
-class Building:
-    def __init__(self,id:str,tiles:list[utils.Pos],fromInternalVariantList:InternalVariantList) -> None:
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,BuildingVariant):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+class BuildingInternalVariant:
+
+    def __init__(self,id:str,tiles:list[utils.Pos],fromBuildingVariant:BuildingVariant) -> None:
         self.id = id
         self.tiles = tiles
-        self.fromInternalVariantList = fromInternalVariantList
+        self.fromBuildingVariant = fromBuildingVariant
 
-def _loadBuildings() -> tuple[dict[str,InternalVariantList],dict[str,Building]]:
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,BuildingInternalVariant):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+def _loadBuildings() -> tuple[dict[str,BuildingVariant],dict[str,BuildingInternalVariant]]:
 
     with importlib.resources.files(__package__).joinpath("gameFiles/buildings.json").open(encoding="utf-8") as f:
         buildingsRaw = json.load(f)
 
-    allInternalVariantLists = {}
-    allBuildings = {}
+    allVariants = {}
+    allInternalVariants = {}
 
-    for internalVariantListRaw in buildingsRaw["Buildings"]:
-        if internalVariantListRaw.get("Title") is None:
-            curInternalVariantListTitle = translations.getTranslation(f"building-variant.{internalVariantListRaw['Id']}.title")
+    for variantRaw in buildingsRaw["Buildings"]:
+        if variantRaw.get("Title") is None:
+            curVariantTitle = f"@building-variant.{variantRaw["Id"]}.title"
         else:
-            curInternalVariantListTitle = internalVariantListRaw["Title"]
-        curInternalVariantList = InternalVariantList(
-            internalVariantListRaw["Id"],
-            curInternalVariantListTitle
+            curVariantTitle = variantRaw["Title"]
+        curVariant = BuildingVariant(
+            variantRaw["Id"],
+            translations.MaybeTranslationString(curVariantTitle)
         )
-        allInternalVariantLists[curInternalVariantList.id] = curInternalVariantList
-        for buildingRaw in internalVariantListRaw["InternalVariants"]:
-            curBuilding = Building(
-                buildingRaw["Id"],
-                [utils.loadPos(tile) for tile in buildingRaw["Tiles"]],
-                curInternalVariantList
+        allVariants[curVariant.id] = curVariant
+        for InternalVariantRaw in variantRaw["InternalVariants"]:
+            curInternalVariant = BuildingInternalVariant(
+                InternalVariantRaw["Id"],
+                [utils.loadPos(tile) for tile in InternalVariantRaw["Tiles"]],
+                curVariant
             )
-            allBuildings[curBuilding.id] = curBuilding
-            curInternalVariantList.internalVariants.append(curBuilding)
+            allInternalVariants[curInternalVariant.id] = curInternalVariant
+            curVariant.internalVariants.append(curInternalVariant)
 
-    return allInternalVariantLists, allBuildings
+    return allVariants, allInternalVariants
 
-allInternalVariantLists, allBuildings = _loadBuildings()
+allBuildingVariants, allBuildingInternalVariants = _loadBuildings()
 
-def getCategorizedBuildingCounts(counts:dict[str,int]) -> dict[str,dict[str,int]]:
+def getCategorizedBuildingCounts(
+    counts:dict[BuildingInternalVariant,int]
+) -> dict[BuildingVariant,dict[BuildingInternalVariant,int]]:
 
-    internalVariants:dict[str,dict[str,int]] = {}
-    for b,c in counts.items():
-        curIV = allBuildings[b].fromInternalVariantList.id
-        if internalVariants.get(curIV) is None:
-            internalVariants[curIV] = {}
-        internalVariants[curIV][b] = c
+    variants = {}
+    for biv,c in counts.items():
+        curVariant = biv.fromBuildingVariant
+        if variants.get(curVariant) is None:
+            variants[curVariant] = {}
+        variants[curVariant][biv] = c
 
-    return internalVariants
+    return variants

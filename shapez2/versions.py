@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 GAME_VERSIONS = {
     1005 : [
         "0.0.0-alpha1",
@@ -156,84 +158,72 @@ GAME_VERSIONS = {
 LATEST_GAME_VERSION = list(GAME_VERSIONS.keys())[-1]
 LATEST_MAJOR_VERSION = 3
 
-def _getDecomposedVersionId(versionId:str) -> dict[str,list[str]|list[dict]]:
+@dataclass
+class AlphaSuffix:
+    version:str
+    subVersion:str|None
+
+@dataclass
+class ReleaseCandidateSuffix:
+    number:str
+
+@dataclass
+class PreviewSuffix:
+    number:str
+
+class DemoSuffix:...
+
+@dataclass
+class VersionName:
+    major:str
+    minor:str
+    patch:str
+    suffixes:list[AlphaSuffix|ReleaseCandidateSuffix|PreviewSuffix|DemoSuffix]
+
+def getVersionNameFromId(versionId:str) -> VersionName:
 
     mainNumber, *suffixes = versionId.split("-")
 
-    output:dict[str,list[str]|list[dict]] = {
-        "main" : mainNumber.split("."),
-        "suffixes" : []
-    }
+    output = VersionName(*mainNumber.split("."),[])
 
     for suffix in suffixes:
 
         if suffix.startswith("alpha"):
             suffixNumSplit = suffix.removeprefix("alpha").split(".")
-            suffixNumOutput = [[c for c in suffixNumSplit[0]]]
-            if len(suffixNumSplit) > 1:
-                suffixNumOutput.append(suffixNumSplit[1])
-            output["suffixes"].append({
-                "type" : "alpha",
-                "num" : suffixNumOutput
-            })
+            output.suffixes.append(AlphaSuffix(
+                suffixNumSplit[0],
+                suffixNumSplit[1] if len(suffixNumSplit) > 1 else None
+            ))
 
         elif suffix.startswith("rc"):
-            output["suffixes"].append({
-                "type" : "rc",
-                "num" : suffix.removeprefix("rc")
-            })
+            output.suffixes.append(ReleaseCandidateSuffix(suffix.removeprefix("rc")))
 
         elif suffix.startswith("pre"):
-            output["suffixes"].append({
-                "type" : "preview",
-                "num" : suffix.removeprefix("pre")
-            })
+            output.suffixes.append(PreviewSuffix(suffix.removeprefix("pre")))
 
         elif suffix == "demo":
-            output["suffixes"].append({"type":"demo"})
+            output.suffixes.append(DemoSuffix())
 
     return output
 
-def versionNumToText(version:int,returnAll:bool=False) -> None|str|list[str]:
+def versionNameToString(versionName:VersionName) -> str:
 
-    versionTexts = GAME_VERSIONS.get(version)
+    output = f"{versionName.major}.{versionName.minor}.{versionName.patch}"
 
-    if versionTexts is None:
-        return None
+    for suffix in versionName.suffixes:
 
-    if not returnAll:
-        versionTexts = [versionTexts[-1]]
+        if isinstance(suffix,AlphaSuffix):
+            output += f" Alpha {suffix.version}"
+            if suffix.subVersion is not None:
+                output += f".{suffix.subVersion}"
 
-    outputs = []
-    for versionText in versionTexts:
-        output = ""
+        elif isinstance(suffix,ReleaseCandidateSuffix):
+            output += f" RC {suffix.number}"
 
-        decomposed = _getDecomposedVersionId(versionText)
+        elif isinstance(suffix,PreviewSuffix):
+            output += f" Preview {suffix.number}"
 
-        output += ".".join(decomposed["main"])
+        elif isinstance(suffix,DemoSuffix):
+            output += " Demo"
 
-        for suffix in decomposed["suffixes"]:
-
-            if suffix["type"] == "alpha":
-                output += " Alpha "
-                output += "".join(suffix["num"][0])
-                if len(suffix["num"]) > 1:
-                    output += "." + suffix["num"][1]
-
-            elif suffix["type"] == "rc":
-                output += " RC "
-                output += suffix["num"]
-
-            elif suffix["type"] == "preview":
-                output += " Preview "
-                output += suffix["num"]
-
-            elif suffix["type"] == "demo":
-                output += " Demo"
-
-        outputs.append(output)
-
-    if returnAll:
-        return outputs
-
-    return outputs[0]
+    return output

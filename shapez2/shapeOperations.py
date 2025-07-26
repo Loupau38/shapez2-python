@@ -1,66 +1,27 @@
-from . import gameData
+from . import gameObjects
+from .gameObjects import Shape, ShapePart, Color
 
 import math
 import typing
-
-NOTHING_CHAR = gameData.SHAPE_NOTHING_CHAR
-SHAPE_LAYER_SEPARATOR = gameData.SHAPE_LAYER_SEPARATOR
-PIN_CHAR = "P"
-CRYSTAL_CHAR = "c"
-UNPAINTABLE_SHAPES = [CRYSTAL_CHAR,PIN_CHAR,NOTHING_CHAR]
-REPLACED_BY_CRYSTAL = [PIN_CHAR,NOTHING_CHAR]
-
-class ShapePart:
-
-    def __init__(self,shape:str,color:str) -> None:
-        self.shape = shape
-        self.color = color
-
-class Shape:
-
-    def __init__(self,layers:list[list[ShapePart]]) -> None:
-        self.layers = layers
-        self.numLayers = len(layers)
-        self.numParts = len(layers[0])
-
-    @classmethod
-    def fromListOfLayers(cls,layers:list[str]) -> typing.Self:
-        newLayers:list[list[ShapePart]] = []
-        numParts = int(len(layers[0])/2)
-        for layer in layers:
-            newLayers.append([])
-            for partIndex in range(numParts):
-                newLayers[-1].append(ShapePart(layer[partIndex*2],layer[(partIndex*2)+1]))
-        return cls(newLayers)
-
-    @classmethod
-    def fromShapeCode(cls,shapeCode:str) -> typing.Self:
-        return cls.fromListOfLayers(shapeCode.split(SHAPE_LAYER_SEPARATOR))
-
-    def toListOfLayers(self) -> list[str]:
-        return ["".join(p.shape+p.color for p in l) for l in self.layers]
-
-    def toShapeCode(self) -> str:
-        return SHAPE_LAYER_SEPARATOR.join(self.toListOfLayers())
-    
-    def isEmpty(self) -> bool:
-        return all(c == NOTHING_CHAR for c in "".join(self.toListOfLayers()))
+from dataclasses import dataclass
+from collections.abc import Callable
 
 class InvalidOperationInputs(ValueError): ...
 
+@dataclass
 class ShapeOperationConfig:
-    def __init__(self,maxShapeLayers:int) -> None:
-        self.maxShapeLayers = maxShapeLayers
+    maxShapeLayers:int
+    shapesConfig:gameObjects.ShapesConfiguration
 
 def _gravityConnected(part1:ShapePart,part2:ShapePart) -> bool:
-    if (part1.shape in (NOTHING_CHAR,PIN_CHAR)) or (part2.shape in (NOTHING_CHAR,PIN_CHAR)):
+    if None in (part1.type,part2.type):
         return False
-    return True
+    return part1.type.connectsHorizontally and part2.type.connectsHorizontally
 
 def _crystalsFused(part1:ShapePart,part2:ShapePart) -> bool:
-    if (part1.shape == CRYSTAL_CHAR) and (part2.shape == CRYSTAL_CHAR):
-        return True
-    return False
+    if None in (part1.type,part2.type):
+        return False
+    return part1.type.crystalBehavior and part2.type.crystalBehavior
 
 def _getCorrectedIndex(list:list,index:int) -> int:
     if index > len(list)-1:
@@ -69,9 +30,13 @@ def _getCorrectedIndex(list:list,index:int) -> int:
         return len(list) + index
     return index
 
-def _getConnectedSingleLayer(layer:list[ShapePart],index:int,connectedFunc:typing.Callable[[ShapePart,ShapePart],bool]) -> list[int]:
+def _getConnectedSingleLayer(
+    layer:list[ShapePart],
+    index:int,
+    connectedFunc:Callable[[ShapePart,ShapePart],bool]
+) -> list[int]:
 
-    if layer[index].shape == NOTHING_CHAR:
+    if layer[index].type is None:
         return []
 
     connected = [index]
@@ -96,10 +61,14 @@ def _getConnectedSingleLayer(layer:list[ShapePart],index:int,connectedFunc:typin
 
     return connected
 
-def _getConnectedMultiLayer(layers:list[list[ShapePart]],layerIndex:int,partIndex:int,
-    connectedFunc:typing.Callable[[ShapePart,ShapePart],bool]) -> list[tuple[int,int]]:
+def _getConnectedMultiLayer(
+    layers:list[list[ShapePart]],
+    layerIndex:int,
+    partIndex:int,
+    connectedFunc:Callable[[ShapePart,ShapePart],bool]
+) -> list[tuple[int,int]]:
 
-    if layers[layerIndex][partIndex].shape == NOTHING_CHAR:
+    if layers[layerIndex][partIndex].type is None:
         return []
 
     connected = [(layerIndex,partIndex)]
@@ -126,7 +95,7 @@ def _getConnectedMultiLayer(layers:list[list[ShapePart]],layerIndex:int,partInde
 
 def _breakCrystals(layers:list[list[ShapePart]],layerIndex:int,partIndex:int) -> None:
     for curLayer,curPart in _getConnectedMultiLayer(layers,layerIndex,partIndex,_crystalsFused):
-        layers[curLayer][curPart] = ShapePart(NOTHING_CHAR,NOTHING_CHAR)
+        layers[curLayer][curPart] = ShapePart(None,None)
 
 def _makeLayersFall(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
 
@@ -151,7 +120,7 @@ def _makeLayersFall(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
 
         def inner() -> bool:
 
-            if layers[layerIndex][partIndex].shape == NOTHING_CHAR:
+            if layers[layerIndex][partIndex].type is None:
                 return False
 
             if layerIndex == 0:
@@ -206,8 +175,12 @@ def _makeLayersFall(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
     # if a crystal is marked as unsupported it will fall and thus break
     for layerIndex,layer in enumerate(layers):
         for partIndex,part in enumerate(layer):
-            if (part.shape == CRYSTAL_CHAR) and (not supportedPartStates[layerIndex][partIndex]):
-                layer[partIndex] = ShapePart(NOTHING_CHAR,NOTHING_CHAR)
+            if (
+                (part.type is not None)
+                and (part.type.crystalBehavior)
+                and (not supportedPartStates[layerIndex][partIndex])
+            ):
+                layer[partIndex] = ShapePart(None,None)
 
     # second pass of calculating supported parts since crystals breaking could have changed the state of other parts
     supportedPartStates:list[list[bool|None]] = [[None for _ in range(len(layers[0]))] for _ in range(len(layers))]
@@ -230,7 +203,7 @@ def _makeLayersFall(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
                     break
                 fall = True
                 for partIndex in group:
-                    if layers[fallToLayerIndex-1][partIndex].shape != NOTHING_CHAR:
+                    if layers[fallToLayerIndex-1][partIndex].type is not None:
                         fall = False
                         break
                 if not fall:
@@ -238,17 +211,17 @@ def _makeLayersFall(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
 
             for partIndex in group:
                 layers[fallToLayerIndex][partIndex] = layers[layerIndex][partIndex]
-                layers[layerIndex][partIndex] = ShapePart(NOTHING_CHAR,NOTHING_CHAR)
+                layers[layerIndex][partIndex] = ShapePart(None,None)
 
     return layers
 
 def _cleanUpEmptyUpperLayers(layers:list[list[ShapePart]]) -> list[list[ShapePart]]:
     for i in range(len(layers)-1,-1,-1):
-        if any((p.shape != NOTHING_CHAR) for p in layers[i]):
+        if any((p.type is not None) for p in layers[i]):
             break
     return layers[:i+1]
 
-def _differentNumPartsUnsupported(func:typing.Callable[...,typing.Any]):
+def _differentNumPartsUnsupported(func:Callable[...,typing.Any]):
     def wrapper(*args,**kwargs):
         shapes:list[Shape] = []
         for arg in args:
@@ -274,8 +247,8 @@ def cut(shape:Shape,*,config:ShapeOperationConfig) -> list[Shape]:
     shapeA = []
     shapeB = []
     for layer in layers:
-        shapeA.append([*([ShapePart(NOTHING_CHAR,NOTHING_CHAR)]*(shape.numParts-takeParts)),*(layer[-takeParts:])])
-        shapeB.append([*(layer[:-takeParts]),*([ShapePart(NOTHING_CHAR,NOTHING_CHAR)]*(takeParts))])
+        shapeA.append([*([ShapePart(None,None)]*(shape.numParts-takeParts)),*(layer[-takeParts:])])
+        shapeB.append([*(layer[:-takeParts]),*([ShapePart(None,None)]*(takeParts))])
     shapeA, shapeB = [_cleanUpEmptyUpperLayers(_makeLayersFall(s)) for s in (shapeA,shapeB)]
     return [Shape(shapeA),Shape(shapeB)]
 
@@ -306,8 +279,8 @@ def swapHalves(shapeA:Shape,shapeB:Shape,*,config:ShapeOperationConfig) -> list[
     numLayers = max(shapeA.numLayers,shapeB.numLayers)
     takeParts = math.ceil(shapeA.numParts/2)
     shapeACut, shapeBCut = cut(shapeA,config=config), cut(shapeB,config=config)
-    shapeACut = [[*s.layers,*([[ShapePart(NOTHING_CHAR,NOTHING_CHAR)]*shapeA.numParts]*(numLayers-len(s.layers)))] for s in shapeACut]
-    shapeBCut = [[*s.layers,*([[ShapePart(NOTHING_CHAR,NOTHING_CHAR)]*shapeB.numParts]*(numLayers-len(s.layers)))] for s in shapeBCut]
+    shapeACut = [[*s.layers,*([[ShapePart(None,None)]*shapeA.numParts]*(numLayers-len(s.layers)))] for s in shapeACut]
+    shapeBCut = [[*s.layers,*([[ShapePart(None,None)]*shapeB.numParts]*(numLayers-len(s.layers)))] for s in shapeBCut]
     returnShapeA = []
     returnShapeB = []
     for layerA0,layerA1,layerB0,layerB1 in zip(*shapeACut,*shapeBCut):
@@ -318,14 +291,21 @@ def swapHalves(shapeA:Shape,shapeB:Shape,*,config:ShapeOperationConfig) -> list[
 
 @_differentNumPartsUnsupported
 def stack(bottomShape:Shape,topShape:Shape,*,config:ShapeOperationConfig) -> list[Shape]:
-    newLayers = bottomShape.layers + [[ShapePart(NOTHING_CHAR,NOTHING_CHAR) for _ in range(bottomShape.numParts)]] + topShape.layers
+    newLayers = bottomShape.layers + [[ShapePart(None,None) for _ in range(bottomShape.numParts)]] + topShape.layers
     newLayers = _cleanUpEmptyUpperLayers(_makeLayersFall(newLayers))
     newLayers = newLayers[:config.maxShapeLayers]
     return [Shape(newLayers)]
 
-def topPaint(shape:Shape,color:str,*,config:ShapeOperationConfig) -> list[Shape]:
+def topPaint(shape:Shape,color:Color,*,config:ShapeOperationConfig) -> list[Shape]:
     newLayers = shape.layers[:-1]
-    newLayers.append([ShapePart(p.shape,p.color if p.shape in UNPAINTABLE_SHAPES else color) for p in shape.layers[-1]])
+    newLayers.append([
+        (
+            ShapePart(p.type,color)
+            if (p.type is not None) and p.type.canChangeColor else
+            p
+        )
+        for p in shape.layers[-1]
+    ])
     return [Shape(newLayers)]
 
 def pushPin(shape:Shape,*,config:ShapeOperationConfig) -> list[Shape]:
@@ -334,10 +314,10 @@ def pushPin(shape:Shape,*,config:ShapeOperationConfig) -> list[Shape]:
     addedPins = []
 
     for part in layers[0]:
-        if part.shape == NOTHING_CHAR:
-            addedPins.append(ShapePart(NOTHING_CHAR,NOTHING_CHAR))
+        if part.type is None:
+            addedPins.append(ShapePart(None,None))
         else:
-            addedPins.append(ShapePart(PIN_CHAR,NOTHING_CHAR))
+            addedPins.append(ShapePart(config.shapesConfig.pinPart,None))
 
     if len(layers) < config.maxShapeLayers:
         newLayers = [addedPins,*layers]
@@ -352,5 +332,15 @@ def pushPin(shape:Shape,*,config:ShapeOperationConfig) -> list[Shape]:
 
     return [Shape(newLayers)]
 
-def genCrystal(shape:Shape,color:str,*,config:ShapeOperationConfig) -> list[Shape]:
-    return [Shape([[ShapePart(CRYSTAL_CHAR,color) if p.shape in REPLACED_BY_CRYSTAL else p for p in l] for l in shape.layers])]
+def genCrystal(shape:Shape,color:Color,*,config:ShapeOperationConfig) -> list[Shape]:
+    return [Shape([
+        [
+            (
+                ShapePart(config.shapesConfig.crystalPart,color)
+                if (p.type is None) or (p.type.replacedByCrystal) else
+                p
+            )
+            for p in l
+        ]
+        for l in shape.layers
+    ])]

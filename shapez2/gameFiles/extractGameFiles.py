@@ -1,21 +1,20 @@
-import versions
 import json
 import os
 
-GAME_VERSION = versions.LATEST_GAME_VERSION
+GAME_VERSION = 1122
 BASE_PATH = os.path.expandvars(f"%LOCALAPPDATA%low\\tobspr Games\\shapez 2\\basedata-v{GAME_VERSION}\\")
 
 BUILDINGS_PATH = BASE_PATH + "buildings.json"
-ADDITIONAL_BUILDINGS_PATH = "./gameFiles/additionalBuildings.json"
-# RESEARCH_PATH = BASE_PATH + "research-metadata-full.json"
+ADDITIONAL_BUILDINGS_PATH = "./shapez2/gameFiles/additionalBuildings.json"
 TRANSLATIONS_PATH = BASE_PATH + "translations-en-US.json"
 IDENTIFIERS_PATH = BASE_PATH + "identifiers.json"
+SCENARIOS_PATH = BASE_PATH + "scenarios\\"
 
-EXTRACTED_BUILDINGS_PATH = "./gameFiles/buildings.json"
-EXTRACTED_RESEARCH_PATH = "./gameFiles/research.json"
-EXTRACTED_ISLANDS_PATH = "./gameFiles/islands.json"
-EXTRACTED_TRANSLATIONS_PATH = "./gameFiles/translations-en-US.json"
-EXTRACTED_ICONS_PATH = "./gameFiles/icons.json"
+EXTRACTED_BUILDINGS_PATH = "./shapez2/gameFiles/buildings.json"
+EXTRACTED_ISLANDS_PATH = "./shapez2/gameFiles/islands.json"
+EXTRACTED_TRANSLATIONS_PATH = "./shapez2/gameFiles/translations-en-US.json"
+EXTRACTED_ICONS_PATH = "./shapez2/gameFiles/icons.json"
+EXTRACTED_SCENARIOS_PATH = "./shapez2/gameFiles/"
 
 def extractKeys(fromDict:dict,toDict:dict,keys:list[str]) -> dict:
     for key in keys:
@@ -24,28 +23,22 @@ def extractKeys(fromDict:dict,toDict:dict,keys:list[str]) -> dict:
 
 def main() -> None:
 
-    if os.getcwd().split("\\")[-1] != "shapez2":
-        print("Must be executed from 'shapez2' directory")
+    if os.getcwd().split("\\")[-1] != "s2 py package":
+        print("Must be executed from 's2 py package' directory")
         input()
         exit()
 
     # research
-    # with open(RESEARCH_PATH,encoding="utf-8") as f:
-    #     researchRaw = json.load(f)
 
-    # gameVersion = researchRaw["GameVersion"]
-    # extractedResearch = {"GameVersion":gameVersion}
-    # extractedLevels = []
-    # keys = ["Id","Title","Description","GoalShape","GoalAmount","Unlocks"]
-    # for levelRaw in researchRaw["Levels"][1:]:
-    #     extractedLevels.append({
-    #         "Node" : extractKeys(levelRaw["Node"],{},keys),
-    #         "SideGoals" : [extractKeys(sg,{},keys) for sg in levelRaw["SideGoals"]]
-    #     })
-    # extractedResearch["Levels"] = extractedLevels
+    scenariosRaw = []
+    for dirEntry in os.scandir(SCENARIOS_PATH):
+        if dirEntry.is_file():
+            with open(dirEntry.path,encoding="utf-8") as f:
+                scenariosRaw.append((dirEntry.name,json.load(f)))
 
-    # with open(EXTRACTED_RESEARCH_PATH,"w",encoding="utf-8") as f:
-    #     json.dump(extractedResearch,f,indent=4,ensure_ascii=True)
+    for name,scenario in scenariosRaw:
+        with open(EXTRACTED_SCENARIOS_PATH+name,"w",encoding="utf-8") as f:
+            json.dump(scenario,f,indent=4,ensure_ascii=True)
 
 
 

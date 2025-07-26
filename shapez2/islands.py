@@ -3,23 +3,34 @@ from .utils import Rotation, Pos, Size, Rect
 
 import json
 import importlib.resources
+from dataclasses import dataclass
+import typing
 
 ISLAND_SIZE = 20
 DEFAULT_REMOVED_ISLAND_SIZE = 3
 REDUCED_REMOVED_ISLAND_SIZE = DEFAULT_REMOVED_ISLAND_SIZE + 1
 NOTCH_SIZE = 4
 
+@dataclass
 class IslandTile:
-    def __init__(self,pos:Pos,buildArea:list[Rect]) -> None:
-        self.pos = pos
-        self.buildArea = buildArea
+    pos:Pos
+    buildArea:list[Rect]
 
 class Island:
-    def __init__(self,id:str,title:str,tiles:list[IslandTile],islandUnitCost:int|float) -> None:
+
+    def __init__(
+        self,
+        id:str,
+        title:translations.MaybeTranslationString,
+        tiles:list[IslandTile],
+        islandUnitCost:int|float,
+        group:"IslandGroup"
+    ) -> None:
         self.id = id
         self.title = title
         self.tiles = tiles
         self.islandUnitCost = islandUnitCost
+        self.group = group
         self.totalBuildArea:list[Rect] = []
         for tile in tiles:
             for area in tile.buildArea:
@@ -28,10 +39,60 @@ class Island:
                     area.size
                 ))
 
-def _loadIslands() -> dict[str,Island]:
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,Island):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+@dataclass
+class IslandGroup:
+    id:str
+    title:translations.TranslationString
+    islands:list[Island]
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,IslandGroup):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
+
+    class TileFormat(typing.TypedDict):
+        x:typing.NotRequired[int]
+        y:typing.NotRequired[int]
+        z:typing.NotRequired[int]
+
+    class BAOFormat(typing.TypedDict):
+        Tile:TileFormat
+        Rects:list[list[int]]
+
+    class IslandFormat(typing.TypedDict):
+        Id:str
+        Title:typing.NotRequired[str]
+        Tiles:list[TileFormat]
+        ReducedSides:typing.NotRequired[list[dict]]
+        BuildAreaOverride:typing.NotRequired[list[BAOFormat]]
+        NoBuildArea:typing.NotRequired[bool]
+        IslandUnitCost:typing.NotRequired[int]
+        Group:str
+
+    class IslandGroupFormat(typing.TypedDict):
+        Common:IslandFormat
+        Islands:list[IslandFormat]
+
+    class FileFormat(typing.TypedDict):
+        IslandGroups:list[IslandGroupFormat]
+        Islands:list[IslandFormat]
+        ExtraGroups:list[str]
 
     with importlib.resources.files(__package__).joinpath("gameFiles/islands.json").open(encoding="utf-8") as f:
-        islandsRaw:dict[str,list[dict[str,dict|list[dict]]]] = json.load(f)
+        islandsRaw:FileFormat = json.load(f)
 
     for islandGroup in islandsRaw["IslandGroups"]:
         for island in islandGroup["Islands"]:
@@ -39,7 +100,15 @@ def _loadIslands() -> dict[str,Island]:
             newIsland.update(island)
             islandsRaw["Islands"].append(newIsland)
 
-    allIslands = {}
+    allIslands:dict[str,Island] = {}
+    allIslandGroups:dict[str,IslandGroup] = {}
+
+    def createIslandGroup(id:str) -> None:
+        allIslandGroups[id] = IslandGroup(
+            id,
+            translations.TranslationString(f"island-group.{id}.title"),
+            []
+        )
 
     for islandRaw in islandsRaw["Islands"]:
 
@@ -224,17 +293,39 @@ def _loadIslands() -> dict[str,Island]:
             generatedIslandTiles.append(IslandTile(tile,buildAreas))
 
         if islandRaw.get("Title") is None:
-            islandTitle = translations.getTranslation(f"island-layout.{islandRaw['Id']}.title")
+            islandTitle = f"@island-layout.{islandRaw['Id']}.title"
         else:
             islandTitle = islandRaw["Title"]
 
-        allIslands[islandRaw["Id"]] = Island(
+        curGroupId = islandRaw["Group"]
+        if allIslandGroups.get(curGroupId) is None:
+            createIslandGroup(curGroupId)
+        curIslandGroup = allIslandGroups[curGroupId]
+
+        curIsland = Island(
             islandRaw["Id"],
-            islandTitle,
+            translations.MaybeTranslationString(islandTitle),
             generatedIslandTiles,
-            islandRaw.get("IslandUnitCost",len(generatedIslandTiles))
+            islandRaw.get("IslandUnitCost",len(generatedIslandTiles)),
+            curIslandGroup
         )
+        allIslands[islandRaw["Id"]] = curIsland
+        curIslandGroup.islands.append(curIsland)
 
-    return allIslands
+    for groupId in islandsRaw["ExtraGroups"]:
+        createIslandGroup(groupId)
 
-allIslands = _loadIslands()
+    return allIslands, allIslandGroups
+
+allIslands, allIslandGroups = _loadIslands()
+
+def getCategorizedIslandCounts(counts:dict[Island,int]) -> dict[IslandGroup,dict[Island,int]]:
+
+    groups = {}
+    for i,c in counts.items():
+        curGroup = i.group
+        if groups.get(curGroup) is None:
+            groups[curGroup] = {}
+        groups[curGroup][i] = c
+
+    return groups

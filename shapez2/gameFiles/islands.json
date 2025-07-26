@@ -8,7 +8,8 @@
                     {}
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpaceBeltsGroup"
             },
             "Islands": [
                 {
@@ -56,7 +57,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpaceBeltsGroup"
             },
             "Islands": [
                 {
@@ -83,7 +85,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpaceBeltsGroup"
             },
             "Islands": [
                 {
@@ -113,7 +116,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpaceBeltsGroup"
             },
             "Islands": [
                 {
@@ -143,7 +147,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpaceBeltsGroup"
             },
             "Islands": [
                 {
@@ -167,7 +172,8 @@
                     {}
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpacePipesGroup"
             },
             "Islands": [
                 {
@@ -215,7 +221,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpacePipesGroup"
             },
             "Islands": [
                 {
@@ -242,7 +249,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpacePipesGroup"
             },
             "Islands": [
                 {
@@ -272,7 +280,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpacePipesGroup"
             },
             "Islands": [
                 {
@@ -302,7 +311,8 @@
                     }
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0.5
+                "IslandUnitCost": 0.5,
+                "Group": "SpacePipesGroup"
             },
             "Islands": [
                 {
@@ -326,7 +336,8 @@
                     {}
                 ],
                 "NoBuildArea": true,
-                "IslandUnitCost": 0
+                "IslandUnitCost": 0,
+                "Group": "RedRailGroup"
             },
             "Islands": [
                 {
@@ -348,7 +359,13 @@
                     "Id": "Rail_YSplitter"
                 },
                 {
+                    "Id": "Rail_YSplitterFlipped"
+                },
+                {
                     "Id": "Rail_TripleSplitter"
+                },
+                {
+                    "Id": "Rail_TripleSplitterFlipped"
                 },
                 {
                     "Id": "Rail_RightFwdMerger"
@@ -377,25 +394,32 @@
             },
             "Islands": [
                 {
-                    "Id": "Layout_TrainProducer_Red"
+                    "Id": "Layout_TrainProducer_Red",
+                    "Group": "RedTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_Blue"
+                    "Id": "Layout_TrainProducer_Blue",
+                    "Group": "BlueTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_Green"
+                    "Id": "Layout_TrainProducer_Green",
+                    "Group": "GreenTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_White"
+                    "Id": "Layout_TrainProducer_White",
+                    "Group": "WhiteTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_Cyan"
+                    "Id": "Layout_TrainProducer_Cyan",
+                    "Group": "CyanTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_Magenta"
+                    "Id": "Layout_TrainProducer_Magenta",
+                    "Group": "MagentaTrainProducerGroup"
                 },
                 {
-                    "Id": "Layout_TrainProducer_Yellow"
+                    "Id": "Layout_TrainProducer_Yellow",
+                    "Group": "YellowTrainProducerGroup"
                 }
             ]
         }
@@ -417,7 +441,8 @@
                     "Direction_L": 3
                 }
             ],
-            "IslandUnitCost": 2
+            "IslandUnitCost": 2,
+            "Group": "ShapeMinerExtractorsGroup"
         },
         {
             "Id": "Layout_ShapeMinerExtension",
@@ -425,7 +450,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 2
+            "IslandUnitCost": 2,
+            "Group": "ShapeMinerChainsGroup"
         },
         {
             "Id": "Layout_FluidMiner",
@@ -451,7 +477,8 @@
                     ]
                 }
             ],
-            "IslandUnitCost": 2
+            "IslandUnitCost": 2,
+            "Group": "FluidMinerExtractorsGroup"
         },
         {
             "Id": "Layout_FluidMinerExtension",
@@ -459,21 +486,24 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 2
+            "IslandUnitCost": 2,
+            "Group": "FluidMinerChainsGroup"
         },
         {
             "Id": "Foundation_1x1",
             "Title": "1x1 Foundation",
             "Tiles": [
                 {}
-            ]
+            ],
+            "Group": "FoundationGroup_1x1"
         },
         {
             "Id": "Foundation_1x1_Flipped",
             "Title": "1x1 Foundation (Mirrored)",
             "Tiles": [
                 {}
-            ]
+            ],
+            "Group": "FoundationGroup_1x1"
         },
         {
             "Id": "Foundation_1x2",
@@ -483,7 +513,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x2"
         },
         {
             "Id": "Foundation_1x2_Flipped",
@@ -493,7 +524,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x2"
         },
         {
             "Id": "Foundation_1x3",
@@ -506,7 +538,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x3"
         },
         {
             "Id": "Foundation_1x3_Flipped",
@@ -519,7 +552,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x3"
         },
         {
             "Id": "Foundation_1x4",
@@ -535,7 +569,8 @@
                 {
                     "X": 2
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x4"
         },
         {
             "Id": "Foundation_1x4_Flipped",
@@ -551,7 +586,8 @@
                 {
                     "X": 2
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_1x4"
         },
         {
             "Id": "Foundation_2x2",
@@ -568,7 +604,8 @@
                     "X": 1,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x2"
         },
         {
             "Id": "Foundation_2x2_Flipped",
@@ -585,7 +622,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x2"
         },
         {
             "Id": "Foundation_2x3",
@@ -609,7 +647,8 @@
                     "X": 1,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x3"
         },
         {
             "Id": "Foundation_2x3_Flipped",
@@ -633,7 +672,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x3"
         },
         {
             "Id": "Foundation_2x4",
@@ -664,7 +704,8 @@
                     "X": 2,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x4"
         },
         {
             "Id": "Foundation_2x4_Flipped",
@@ -695,7 +736,8 @@
                 {
                     "X": 2
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_2x4"
         },
         {
             "Id": "Foundation_3x3",
@@ -730,7 +772,8 @@
                     "X": 1,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_3x3"
         },
         {
             "Id": "Foundation_3x3_Flipped",
@@ -765,7 +808,8 @@
                     "X": 1,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_3x3"
         },
         {
             "Id": "Foundation_T4",
@@ -781,7 +825,8 @@
                 {
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_T4"
         },
         {
             "Id": "Foundation_T4_Flipped",
@@ -797,7 +842,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_T4"
         },
         {
             "Id": "Foundation_L3",
@@ -810,7 +856,8 @@
                 {
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_L3"
         },
         {
             "Id": "Foundation_L3_Flipped",
@@ -823,7 +870,8 @@
                 {
                     "X": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_L3"
         },
         {
             "Id": "Foundation_L4",
@@ -839,7 +887,8 @@
                 {
                     "X": 2
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_L4"
         },
         {
             "Id": "Foundation_L4_Flipped",
@@ -855,7 +904,8 @@
                 {
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_L4"
         },
         {
             "Id": "Foundation_S4",
@@ -872,7 +922,8 @@
                     "X": 1,
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_S4"
         },
         {
             "Id": "Foundation_S4_Flipped",
@@ -889,7 +940,8 @@
                     "X": -1
                 },
                 {}
-            ]
+            ],
+            "Group": "FoundationGroup_S4"
         },
         {
             "Id": "Foundation_C5",
@@ -908,7 +960,8 @@
                 {
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_C5"
         },
         {
             "Id": "Foundation_C5_Flipped",
@@ -927,7 +980,8 @@
                 {
                     "Y": 1
                 }
-            ]
+            ],
+            "Group": "FoundationGroup_C5"
         },
         {
             "Id": "Layout_RailLiftUp1X1X2",
@@ -938,7 +992,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftUp1X1X2Group"
         },
         {
             "Id": "Layout_RailLiftDown1X1X2",
@@ -949,7 +1004,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftDown1X1X2Group"
         },
         {
             "Id": "Layout_RailLiftUp1X1X3",
@@ -963,7 +1019,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftUp1X1X3Group"
         },
         {
             "Id": "Layout_RailLiftDown1X1X3",
@@ -977,7 +1034,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftDown1X1X3Group"
         },
         {
             "Id": "Layout_TrainLauncher",
@@ -985,7 +1043,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainLaunchersGroup"
         },
         {
             "Id": "Layout_TrainCatcher",
@@ -993,7 +1052,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainCatchersGroup"
         },
         {
             "Id": "Layout_TrainLoader_Shapes",
@@ -1003,7 +1063,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeLoadersGroup"
         },
         {
             "Id": "Layout_TrainLoader_Shapes_Flipped",
@@ -1014,7 +1075,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeLoadersGroup"
         },
         {
             "Id": "Layout_TrainUnloader_Shapes",
@@ -1024,7 +1086,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeUnloadersGroup"
         },
         {
             "Id": "Layout_TrainUnloader_Shapes_Flipped",
@@ -1035,7 +1098,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeUnloadersGroup"
         },
         {
             "Id": "Layout_TrainTransfer_Shape",
@@ -1045,7 +1109,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeTransferGroup"
         },
         {
             "Id": "Layout_TrainTransfer_Shape_Flipped",
@@ -1056,7 +1121,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainShapeTransferGroup"
         },
         {
             "Id": "Layout_TrainLoader_Fluids",
@@ -1066,7 +1132,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidLoadersGroup"
         },
         {
             "Id": "Layout_TrainLoader_Fluids_Flipped",
@@ -1077,7 +1144,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidLoadersGroup"
         },
         {
             "Id": "Layout_TrainUnloader_Fluids",
@@ -1087,7 +1155,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidUnloadersGroup"
         },
         {
             "Id": "Layout_TrainUnloader_Fluids_Flipped",
@@ -1098,7 +1167,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidUnloadersGroup"
         },
         {
             "Id": "Layout_TrainTransfer_Fluid",
@@ -1108,7 +1178,8 @@
                     "Y": -1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidTransferGroup"
         },
         {
             "Id": "Layout_TrainTransfer_Fluid_Flipped",
@@ -1119,7 +1190,8 @@
                     "Y": 1
                 }
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "TrainFluidTransferGroup"
         },
         {
             "Id": "Layout_TrainQuickStation",
@@ -1127,7 +1199,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainQuickStationsGroup"
         },
         {
             "Id": "Layout_TrainWaitStation",
@@ -1135,7 +1208,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainWaitStationsGroup"
         },
         {
             "Id": "Layout_TrainShapeWagonExtension",
@@ -1143,7 +1217,8 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 3
+            "IslandUnitCost": 3,
+            "Group": "ShapeCargoFactoriesGroup"
         },
         {
             "Id": "Layout_TrainFluidWagonExtension",
@@ -1151,14 +1226,16 @@
                 {}
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 3
+            "IslandUnitCost": 3,
+            "Group": "FluidCargoFactoriesGroup"
         },
         {
             "Id": "Layout_TrainFillerWagonExtension",
             "Tiles": [
                 {}
             ],
-            "NoBuildArea": true
+            "NoBuildArea": true,
+            "Group": "FillerCargoFactoriesGroup"
         },
         {
             "Id": "Layout_TrainTwister",
@@ -1178,7 +1255,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainTwistersGroup"
         },
         {
             "Id": "Layout_TrainRollerCoasterLoop",
@@ -1196,10 +1274,12 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainLoopsGroup"
         },
         {
             "Id": "Layout_TrainRollerCoasterLoop_Flipped",
+            "Title": "Rail Loop (Flipped)",
             "Tiles": [
                 {
                     "X": -1,
@@ -1214,7 +1294,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "TrainLoopsGroup"
         },
         {
             "Id": "Layout_RailLiftUp2X1X2",
@@ -1226,7 +1307,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftUp2X1X2Group"
         },
         {
             "Id": "Layout_RailLiftDown2X1X2",
@@ -1238,7 +1320,8 @@
                 }
             ],
             "NoBuildArea": true,
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "RailLiftDown2X1X2Group"
         },
         {
             "Id": "Layout_HUB",
@@ -1313,7 +1396,16 @@
                     "Z": -1
                 }
             ],
-            "IslandUnitCost": 0
+            "IslandUnitCost": 0,
+            "Group": "HUB"
         }
+    ],
+    "ExtraGroups": [
+        "BlueRailGroup",
+        "CyanRailGroup",
+        "GreenRailGroup",
+        "MagentaRailGroup",
+        "WhiteRailGroup",
+        "YellowRailGroup"
     ]
 }

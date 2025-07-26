@@ -1,12 +1,6 @@
-from . import gameData, pygamePIL
+from . import gameObjects, pygamePIL, ingameData
 
 import math
-import typing
-
-SHAPE_NOTHING_CHAR = gameData.SHAPE_NOTHING_CHAR
-SHAPE_LAYER_SEPARATOR = gameData.SHAPE_LAYER_SEPARATOR
-SHAPE_CONFIG_QUAD = gameData.SHAPE_CONFIG_QUAD
-SHAPE_CONFIG_HEX = gameData.SHAPE_CONFIG_HEX
 
 SHAPE_BORDER_COLOR = (35,25,35)
 BG_CIRCLE_COLOR = (31,41,61,25)
@@ -14,58 +8,6 @@ SHADOW_COLOR = (50,50,50,127)
 EMPTY_COLOR = (0,0,0,0)
 PIN_COLOR = (71,69,75)
 COLORBLIND_PATTERN_COLOR = (0,0,0)
-
-BASE_COLORS:dict[str,tuple[int,int,int]] = {
-    "u" : (164,158,165),
-    "r" : (255,0,0),
-    "g" : (0,255,0),
-    "b" : (0,0,255),
-    "c" : (0,255,255),
-    "m" : (255,0,255),
-    "y" : (255,255,0),
-    "w" : (255,255,255),
-    "k" : (86,77,78),
-    "p" : (167,41,207),
-    "o" : (213,133,13)
-}
-
-INTERNAL_COLOR_SKINS = ["RGB","RYB","CMYK"]
-INTERNAL_COLOR_SKINS_ANNOTATION = typing.Literal["RGB","RYB","CMYK"]
-EXTERNAL_COLOR_SKINS = ["RGB","RYB","CMYK","RGB-cb"]
-EXTERNAL_COLOR_SKINS_ANNOTATION = typing.Literal["RGB","RYB","CMYK","RGB-cb"]
-
-INTERNAL_COLOR_SKINS_COLORS:dict[INTERNAL_COLOR_SKINS_ANNOTATION,dict[str,tuple[int,int,int]]] = {
-    "RGB" : {
-        "u" : BASE_COLORS["u"],
-        "r" : BASE_COLORS["r"],
-        "g" : BASE_COLORS["g"],
-        "b" : BASE_COLORS["b"],
-        "c" : BASE_COLORS["c"],
-        "m" : BASE_COLORS["m"],
-        "y" : BASE_COLORS["y"],
-        "w" : BASE_COLORS["w"]
-    },
-    "RYB" : {
-        "u" : BASE_COLORS["u"],
-        "r" : BASE_COLORS["r"],
-        "g" : BASE_COLORS["y"],
-        "b" : BASE_COLORS["b"],
-        "c" : BASE_COLORS["g"],
-        "m" : BASE_COLORS["p"],
-        "y" : BASE_COLORS["o"],
-        "w" : BASE_COLORS["k"]
-    },
-    "CMYK" : {
-        "u" : BASE_COLORS["u"],
-        "r" : BASE_COLORS["c"],
-        "g" : BASE_COLORS["m"],
-        "b" : BASE_COLORS["y"],
-        "c" : BASE_COLORS["r"],
-        "m" : BASE_COLORS["g"],
-        "y" : BASE_COLORS["b"],
-        "w" : BASE_COLORS["k"]
-    }
-}
 
 # according to 'dnSpy > ShapeMeshGenerator > GenerateShapeMesh()', this value should be 0.85
 # according to ingame screenshots, it should be 0.77
@@ -146,14 +88,13 @@ def _getScaledShapeSize(shapeSize:float,layerIndex:int) -> float:
     return shapeSize * (LAYER_SIZE_REDUCTION**layerIndex)
 
 def _drawShapePart(
-    partShape:str,
-    partColor:str,
+    shapePart:gameObjects.ShapePart,
     shapeSize:float,
     partIndex:int,
     layerIndex:int,
-    layers:list[list[str]],
-    colorSkin:INTERNAL_COLOR_SKINS_ANNOTATION,
-    shapeConfig:str
+    fullShape:gameObjects.Shape,
+    colorSkin:gameObjects.ColorSkin,
+    shapesConfig:gameObjects.ShapesConfiguration
     ) -> tuple[pygamePIL.Surface|None,pygamePIL.Surface|None]:
     # returns part with shadow, border
 
@@ -170,11 +111,13 @@ def _drawShapePart(
     partSurfaceForBorder = partSurface.copy()
 
     drawShadow = layerIndex != 0
-    color = INTERNAL_COLOR_SKINS_COLORS[colorSkin].get(partColor)
+    color = colorSkin.colors.get(shapePart.color)
     borderColor = SHAPE_BORDER_COLOR
 
-    if partShape == SHAPE_NOTHING_CHAR:
+    if shapePart.type is None:
         return None, None
+
+    partShape = shapePart.type.code
 
     if partShape == "C":
 
@@ -336,9 +279,9 @@ def _drawShapePart(
 
     if partShape == "P":
 
-        if shapeConfig == SHAPE_CONFIG_QUAD:
+        if shapesConfig.numPartsPerLayer == 4:
             pinCenter = (halfBorderSize+(curPartSize/3),halfBorderSize+(2*(curPartSize/3)))
-        elif shapeConfig == SHAPE_CONFIG_HEX:
+        elif shapesConfig.numPartsPerLayer == 6:
             pinCenter = (halfBorderSize+((SQRT_2/6)*curPartSize),halfBorderSize+((1-(SQRT_6/6))*curPartSize))
         pinRadius = curPartSize/6
 
@@ -353,7 +296,7 @@ def _drawShapePart(
 
         darkenedColor = tuple(round(c/2) for c in color)
 
-        if shapeConfig == SHAPE_CONFIG_QUAD:
+        if shapesConfig.numPartsPerLayer == 4:
 
             darkenedAreasOffset = 0 if layerIndex%2 == 0 else 22.5
             startAngle1 = math.radians(67.5-darkenedAreasOffset)
@@ -395,7 +338,7 @@ def _drawShapePart(
 
             return partSurface, None
 
-        elif shapeConfig == SHAPE_CONFIG_HEX:
+        elif shapesConfig.numPartsPerLayer == 6:
 
             points = [(0,0),((SQRT_3/2)*curPartSize,curPartSize/2),(0,curPartSize)]
             points = [(halfBorderSize+x,halfBorderSize+y) for x,y in points]
@@ -423,7 +366,7 @@ def _drawShapePart(
 
     raise ValueError(f"Unknown shape type : {partShape}")
 
-def _drawColorblindPatterns(layerSurface:pygamePIL.Surface,color:str) -> None:
+def _drawColorblindPatterns(layerSurface:pygamePIL.Surface,color:gameObjects.Color) -> None:
 
     curMask = pygamePIL.mask_from_surface(layerSurface,200)
 
@@ -431,7 +374,7 @@ def _drawColorblindPatterns(layerSurface:pygamePIL.Surface,color:str) -> None:
         (["r","m","y","w"],["g","y","c","w"],["b","c","m","w"]),
         _colorblindPatterns.values()
     ):
-        if color not in colors:
+        if color.code not in colors:
             continue
 
         curPattern = pygamePIL.Surface(layerSurface.get_size(),pygamePIL.SRCALPHA)
@@ -461,52 +404,42 @@ def _rotateSurf(toRotate:pygamePIL.Surface,numParts:int,partIndex:int,layerIndex
     tempSurf = pygamePIL.transform_rotate(tempSurf,-((360/numParts)*partIndex))
     return tempSurf
 
-def _externalToInternalColorSkin(external:EXTERNAL_COLOR_SKINS_ANNOTATION) -> tuple[INTERNAL_COLOR_SKINS_ANNOTATION,bool]:
-    return external.removesuffix("-cb"), external.endswith("-cb")
-
-def getShapeColor(colorCode:str,colorSkin:EXTERNAL_COLOR_SKINS_ANNOTATION) -> tuple[int,int,int]:
-    return INTERNAL_COLOR_SKINS_COLORS[_externalToInternalColorSkin(colorSkin)[0]][colorCode]
-
+# reduce displayed type annotations length
+_defaultColorMode = ingameData.DEFAULT_COLOR_SCHEME.colorModesById["RGB"]
+_defaultShapesConfig = ingameData.QUAD_SHAPES_CONFIG
 def renderShape(
-    shapeCode:str,
+    shape:gameObjects.Shape,
     surfaceSize:int,
-    colorSkin:EXTERNAL_COLOR_SKINS_ANNOTATION=EXTERNAL_COLOR_SKINS[0],
-    shapeConfig:str=SHAPE_CONFIG_QUAD
+    colorMode:gameObjects.ColorMode=_defaultColorMode,
+    shapesConfig:gameObjects.ShapesConfiguration=_defaultShapesConfig
 ) -> pygamePIL.Surface:
-
-    decomposedShapeCode = shapeCode.split(SHAPE_LAYER_SEPARATOR)
-    numParts = int(len(decomposedShapeCode[0])/2)
-    decomposedShapeCode = [[layer[i*2:(i*2)+2] for i in range(numParts)] for layer in decomposedShapeCode]
-
-    curInternalColorSkin, colorblindPatterns = _externalToInternalColorSkin(colorSkin)
 
     returnSurface = pygamePIL.Surface((FAKE_SURFACE_SIZE,FAKE_SURFACE_SIZE),pygamePIL.SRCALPHA)
     pygamePIL.draw_circle(returnSurface,BG_CIRCLE_COLOR,(FAKE_SURFACE_SIZE/2,FAKE_SURFACE_SIZE/2),BG_CIRCLE_DIAMETER/2)
 
-    for layerIndex, layer in enumerate(decomposedShapeCode):
+    for layerIndex, layer in enumerate(shape.layers):
 
         partBorders = []
 
         for partIndex, part in enumerate(layer):
 
             partSurface, partBorder = _drawShapePart(
-                part[0],
-                part[1],
+                part,
                 SHAPE_SIZE,
                 partIndex,
                 layerIndex,
-                decomposedShapeCode,
-                curInternalColorSkin,
-                shapeConfig
+                shape,
+                colorMode.colorSkin,
+                shapesConfig
             )
             partBorders.append(partBorder)
 
             if partSurface is None:
                 continue
 
-            rotatedLayer = _rotateSurf(partSurface,numParts,partIndex,layerIndex,SHAPE_SIZE)
-            if colorblindPatterns:
-                _drawColorblindPatterns(rotatedLayer,part[1])
+            rotatedLayer = _rotateSurf(partSurface,shape.numParts,partIndex,layerIndex,SHAPE_SIZE)
+            if colorMode.colorblindPatterns and (part.color is not None):
+                _drawColorblindPatterns(rotatedLayer,part.color)
             _blitCentered(rotatedLayer,returnSurface)
 
         for partIndex, border in enumerate(partBorders):
@@ -514,7 +447,7 @@ def renderShape(
             if border is None:
                 continue
 
-            _blitCentered(_rotateSurf(border,numParts,partIndex,layerIndex,SHAPE_SIZE),returnSurface)
+            _blitCentered(_rotateSurf(border,shape.numParts,partIndex,layerIndex,SHAPE_SIZE),returnSurface)
 
     # pygame doesn't work well at low resolution so render at size 500 then downscale to the desired size
     return pygamePIL.transform_smoothscale(returnSurface,(surfaceSize,surfaceSize))
