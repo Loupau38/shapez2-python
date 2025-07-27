@@ -942,8 +942,7 @@ def _applyMigrationToEntry(bpVersion:int,entry:dict,advanced:bool) -> None:
             elif isFuncAdvanced is None:
                 func(entry,advanced)
             else: # isFuncAdvanced is False
-                if not advanced:
-                    func(entry)
+                func(entry)
 
 #endregion migration
 
