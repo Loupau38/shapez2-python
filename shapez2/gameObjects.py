@@ -5,6 +5,11 @@ from dataclasses import dataclass
 class Color:
     code:str
 
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,Color):
+            return NotImplemented
+        return self.code == other.code
+
     def __hash__(self) -> int:
         return hash(self.code)
 
@@ -12,6 +17,11 @@ class Color:
 class ColorSkin:
     id:str
     colors:dict[Color,tuple[int,int,int]]
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,ColorSkin):
+            return NotImplemented
+        return self.id == other.id
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -21,6 +31,11 @@ class ColorMode:
     id:str
     colorSkin:ColorSkin
     colorblindPatterns:bool
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,ColorMode):
+            return NotImplemented
+        return self.id == other.id
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -51,6 +66,11 @@ class ColorScheme:
     def getMixResult(self,color1:Color,color2:Color) -> Color:
         return self.mixingRecipes[frozenset((color1,color2))]
 
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,ColorScheme):
+            return NotImplemented
+        return self.id == other.id
+
     def __hash__(self) -> int:
         return hash(self.id)
 
@@ -62,6 +82,11 @@ class ShapePartType:
     connectsHorizontally:bool=True
     crystalBehavior:bool=False
     replacedByCrystal:bool=False
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,ShapePartType):
+            return NotImplemented
+        return self.code == other.code
 
     def __hash__(self) -> int:
         return hash(self.code)
@@ -82,6 +107,11 @@ class ShapesConfiguration:
         self.crystalPart = crystalPart
         self.parts = parts
         self.partsByCode = {p.code:p for p in parts}
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,ShapesConfiguration):
+            return NotImplemented
+        return self.id == other.id
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -129,6 +159,11 @@ class Shape:
     
     def isEmpty(self) -> bool:
         return all(p.type is None for l in self.layers for p in l)
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,Shape):
+            return NotImplemented
+        return self.toShapeCode() == other.toShapeCode()
 
     def __hash__(self) -> int:
         return hash(self.toShapeCode())
