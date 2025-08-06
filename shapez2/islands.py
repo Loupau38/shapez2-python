@@ -50,7 +50,7 @@ class Island:
 @dataclass
 class IslandGroup:
     id:str
-    title:translations.TranslationString
+    title:translations.MaybeTranslationString
     islands:list[Island]
 
     def __eq__(self,other:object) -> bool:
@@ -87,14 +87,15 @@ def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
         Islands:list[IslandFormat]
 
     class FileFormat(typing.TypedDict):
-        IslandGroups:list[IslandGroupFormat]
+        SimilarIslands:list[IslandGroupFormat]
         Islands:list[IslandFormat]
         ExtraGroups:list[str]
+        GroupTitleOverrides:dict[str,str]
 
     with importlib.resources.files(__package__).joinpath("gameFiles/islands.json").open(encoding="utf-8") as f:
         islandsRaw:FileFormat = json.load(f)
 
-    for islandGroup in islandsRaw["IslandGroups"]:
+    for islandGroup in islandsRaw["SimilarIslands"]:
         for island in islandGroup["Islands"]:
             newIsland = islandGroup["Common"].copy()
             newIsland.update(island)
@@ -104,9 +105,13 @@ def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
     allIslandGroups:dict[str,IslandGroup] = {}
 
     def createIslandGroup(id:str) -> None:
+        if islandsRaw["GroupTitleOverrides"].get(id) is None:
+            islandGroupTitle = f"@island-group.{id}.title"
+        else:
+            islandGroupTitle = islandsRaw["GroupTitleOverrides"][id]
         allIslandGroups[id] = IslandGroup(
             id,
-            translations.TranslationString(f"island-group.{id}.title"),
+            translations.MaybeTranslationString(islandGroupTitle),
             []
         )
 
