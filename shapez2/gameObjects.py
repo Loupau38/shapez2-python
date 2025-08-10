@@ -99,14 +99,17 @@ class ShapesConfiguration:
         numPartsPerLayer:int,
         pinPart:ShapePartType,
         crystalPart:ShapePartType,
-        parts:list[ShapePartType]
+        parts:list[tuple[ShapePartType,typing.Literal[0,1,2,3]]]
     ) -> None:
         self.id = id
         self.numPartsPerLayer = numPartsPerLayer
         self.pinPart = pinPart
         self.crystalPart = crystalPart
-        self.parts = parts
-        self.partsByCode = {p.code:p for p in parts}
+        self.mapGenerationCommonParts = [p[0] for p in parts if p[1] == 0]
+        self.mapGenerationRareParts = [p[0] for p in parts if p[1] == 1]
+        self.mapGenerationVeryRareParts = [p[0] for p in parts if p[1] == 2]
+        self.parts = [p[0] for p in parts]
+        self.partsByCode = {p.code:p for p in self.parts}
 
     def __eq__(self,other:object) -> bool:
         if not isinstance(other,ShapesConfiguration):

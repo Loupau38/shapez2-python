@@ -1,12 +1,9 @@
 from . import pygamePIL
 
 import json
-import typing
 import importlib.resources
 import enum
 from dataclasses import dataclass
-
-_T = typing.TypeVar("_T")
 
 TAG_GL_COLOR = (216,121,62)
 TAG_GL_BG_COLOR = (0,0,0,85)
@@ -82,13 +79,23 @@ class FeatureString:
     def renderToStringNoFeatures(self) -> str:
         return "".join(c for c in self.components if isinstance(c,str))
 
-    def renderToSurface(self,font:pygamePIL.font_Font,boldFont:pygamePIL.font_Font) -> pygamePIL.Surface:
+    def renderToSurface(self,font:pygamePIL.font.Font,boldFont:pygamePIL.font.Font) -> pygamePIL.Surface:
 
         TEXT_COLOR = (255,255,255)
+        CSS_COLORS = {
+            "black" : (0,0,0),
+            "blue" : (0,0,255),
+            "green" : (0,128,0),
+            "orange" : (255,165,0),
+            "purple" : (128,0,128),
+            "red" : (255,0,0),
+            "white" : (255,255,255),
+            "yellow" : (255,255,0)
+        }
 
-        def removeFromEnd(list:list[_T],value:_T) -> None:
+        def removeFromEnd(list:list[tuple[str,str|None]],value:tuple[str,str|None]) -> None:
             for i in reversed(range(len(list))):
-                if list[i] == value:
+                if list[i][0] == value[0]:
                     list.pop(i)
                     return
 
@@ -122,12 +129,15 @@ class FeatureString:
                         func(("glow",None))
                     elif component.feature == "link":
                         func(("link",None))
-                    elif (
-                        (component.feature == "color")
-                        and (component.value is not None)
-                        and (component.valueSep == ValueSep.equals)
-                    ):
-                        func(("color",component.value))
+                    elif component.feature == "color":
+                        if component.type == TagType.start:
+                            if (
+                                (component.value is not None)
+                                and (component.valueSep == ValueSep.equals)
+                            ):
+                                func(("color",component.value))
+                        else:
+                            func(("color",None))
                 continue
 
             calculatedFeatures = {
@@ -150,7 +160,9 @@ class FeatureString:
                     calculatedFeatures["color"] = TAG_LINK_COLOR
                     calculatedFeatures["underline"] = True
                 elif rawFeature[0] == "color":
-                    color = colorHexToRGB(rawFeature[1])
+                    color = CSS_COLORS.get(rawFeature[1])
+                    if color is None:
+                        color = colorHexToRGB(rawFeature[1])
                     if color is not None:
                         calculatedFeatures["color"] = color
 

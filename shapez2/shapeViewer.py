@@ -44,7 +44,7 @@ def _preRenderColorblindPatterns() -> None:
     blueSurface = redSurface.copy()
 
     for i in range(COLORBLIND_NUM_PATTERNS):
-        pygamePIL.draw_line(
+        pygamePIL.draw.line(
             redSurface,
             COLORBLIND_PATTERN_COLOR,
             (i*COLORBLIND_PATTERN_SPACING,0),
@@ -54,7 +54,7 @@ def _preRenderColorblindPatterns() -> None:
 
     for x in range(COLORBLIND_NUM_PATTERNS-1):
         for y in range(COLORBLIND_NUM_PATTERNS):
-            pygamePIL.draw_rect(
+            pygamePIL.draw.rect(
                 greenSurface,
                 COLORBLIND_PATTERN_COLOR,
                 pygamePIL.Rect(
@@ -66,7 +66,7 @@ def _preRenderColorblindPatterns() -> None:
             )
 
     for i in range((COLORBLIND_NUM_PATTERNS*2)-1):
-        pygamePIL.draw_line(
+        pygamePIL.draw.line(
             blueSurface,
             COLORBLIND_PATTERN_COLOR,
             ((i-COLORBLIND_NUM_PATTERNS+1)*COLORBLIND_PATTERN_SPACING,0),
@@ -121,24 +121,24 @@ def _drawShapePart(
 
     if partShape == "C":
 
-        pygamePIL.draw_circle(partSurface,color, # main circle
+        pygamePIL.draw.circle(partSurface,color, # main circle
             (halfBorderSize,withBorderPartSize-halfBorderSize),
             curPartSize,
             draw_top_right=True
         )
 
-        pygamePIL.draw_circle(partSurfaceForBorder,borderColor, # circle border
+        pygamePIL.draw.circle(partSurfaceForBorder,borderColor, # circle border
             (halfBorderSize,withBorderPartSize-halfBorderSize),
             curPartSize+halfBorderSize,
             borderSize,
             draw_top_right=True
         )
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # left border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # left border
             (halfBorderSize,0),
             (halfBorderSize,withBorderPartSize),
             borderSize
         )
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # down border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # down border
             (0,withBorderPartSize-halfBorderSize),
             (withBorderPartSize,withBorderPartSize-halfBorderSize),
             borderSize
@@ -148,11 +148,11 @@ def _drawShapePart(
 
     if partShape == "R":
 
-        pygamePIL.draw_rect(partSurface,color, # main rect
+        pygamePIL.draw.rect(partSurface,color, # main rect
             pygamePIL.Rect(halfBorderSize,halfBorderSize,curPartSize,curPartSize)
         )
 
-        pygamePIL.draw_rect(partSurfaceForBorder,borderColor, # rect border
+        pygamePIL.draw.rect(partSurfaceForBorder,borderColor, # rect border
             pygamePIL.Rect(0,0,withBorderPartSize,withBorderPartSize),
             borderSize
         )
@@ -164,11 +164,11 @@ def _drawShapePart(
         points = [(curPartSize,0),(curPartSize/2,curPartSize),(0,curPartSize),(0,curPartSize/2)]
         points = [(halfBorderSize+x,halfBorderSize+y) for x,y in points]
 
-        pygamePIL.draw_polygon(partSurface,color,points) # main polygon
+        pygamePIL.draw.polygon(partSurface,color,points) # main polygon
 
-        pygamePIL.draw_polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
+        pygamePIL.draw.polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
         for point in points:
-            pygamePIL.draw_circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
+            pygamePIL.draw.circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
 
         return partSurface, partSurfaceForBorder
 
@@ -178,28 +178,28 @@ def _drawShapePart(
         arcRadius = curPartSize * 1.18
         sideLength = curPartSize / 3.75
 
-        pygamePIL.draw_rect(partSurface,color, # first fill in the whole part
+        pygamePIL.draw.rect(partSurface,color, # first fill in the whole part
             pygamePIL.Rect(halfBorderSize,halfBorderSize,curPartSize,curPartSize)
         )
-        pygamePIL.draw_circle(partSurface,EMPTY_COLOR,arcCenter,arcRadius) # then carve out a circle
+        pygamePIL.draw.circle(partSurface,EMPTY_COLOR,arcCenter,arcRadius) # then carve out a circle
 
-        pygamePIL.draw_circle(partSurfaceForBorder,borderColor,arcCenter,arcRadius+halfBorderSize,borderSize) # arc border
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # left border
+        pygamePIL.draw.circle(partSurfaceForBorder,borderColor,arcCenter,arcRadius+halfBorderSize,borderSize) # arc border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # left border
             (halfBorderSize,0),
             (halfBorderSize,withBorderPartSize),
             borderSize
         )
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # down border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # down border
             (0,withBorderPartSize-halfBorderSize),
             (withBorderPartSize,withBorderPartSize-halfBorderSize),
             borderSize
         )
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # top edge border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # top edge border
             (halfBorderSize,halfBorderSize),
             (halfBorderSize+sideLength,halfBorderSize),
             borderSize
         )
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor, # right edge border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor, # right edge border
             (withBorderPartSize-halfBorderSize,withBorderPartSize-halfBorderSize-sideLength),
             (withBorderPartSize-halfBorderSize,withBorderPartSize-halfBorderSize),
             borderSize
@@ -212,11 +212,11 @@ def _drawShapePart(
         points = [(0,0),((SQRT_3/2)*curPartSize,curPartSize/2),(0,curPartSize)]
         points = [(halfBorderSize+x,halfBorderSize+y) for x,y in points]
 
-        pygamePIL.draw_polygon(partSurface,color,points) # main polygon
+        pygamePIL.draw.polygon(partSurface,color,points) # main polygon
 
-        pygamePIL.draw_polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
+        pygamePIL.draw.polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
         for point in points:
-            pygamePIL.draw_circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
+            pygamePIL.draw.circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
 
         return partSurface, partSurfaceForBorder
 
@@ -242,17 +242,17 @@ def _drawShapePart(
         semicircleCenterY += halfBorderSize
         trianglePoints = [(halfBorderSize+x,halfBorderSize+y) for x,y in trianglePoints]
 
-        pygamePIL.draw_polygon(partSurface,color,trianglePoints) # triangle part
+        pygamePIL.draw.polygon(partSurface,color,trianglePoints) # triangle part
 
-        pygamePIL.draw_arc(partSurface,color,pygamePIL.Rect( # semicircle part
+        pygamePIL.draw.arc(partSurface,color,pygamePIL.Rect( # semicircle part
             semicircleCenterX-semicircleRadius,semicircleCenterY-semicircleRadius,triangleSideLength,triangleSideLength
         ),semicircleStartAngle,semicircleStopAngle,math.ceil(semicircleRadius))
 
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor,trianglePoints[0],trianglePoints[2],borderSize) # left border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor,trianglePoints[0],trianglePoints[2],borderSize) # left border
 
-        pygamePIL.draw_line(partSurfaceForBorder,borderColor,trianglePoints[1],trianglePoints[2],borderSize) # bottom border
+        pygamePIL.draw.line(partSurfaceForBorder,borderColor,trianglePoints[1],trianglePoints[2],borderSize) # bottom border
 
-        pygamePIL.draw_arc(partSurfaceForBorder,borderColor,pygamePIL.Rect( # semicircle border
+        pygamePIL.draw.arc(partSurfaceForBorder,borderColor,pygamePIL.Rect( # semicircle border
             semicircleCenterX - semicircleRadius - halfBorderSize,
             semicircleCenterY - semicircleRadius - halfBorderSize,
             triangleSideLength + borderSize,
@@ -260,7 +260,7 @@ def _drawShapePart(
         ),semicircleStartAngle,semicircleStopAngle,borderSize)
 
         for point in trianglePoints:
-            pygamePIL.draw_circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
+            pygamePIL.draw.circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
 
         return partSurface, partSurfaceForBorder
 
@@ -269,11 +269,11 @@ def _drawShapePart(
         points = [(0,0),((SQRT_3/6)*curPartSize,curPartSize/2),((SQRT_3/2)*curPartSize,curPartSize/2),(0,curPartSize)]
         points = [(halfBorderSize+x,halfBorderSize+y) for x,y in points]
 
-        pygamePIL.draw_polygon(partSurface,color,points) # main polygon
+        pygamePIL.draw.polygon(partSurface,color,points) # main polygon
 
-        pygamePIL.draw_polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
+        pygamePIL.draw.polygon(partSurfaceForBorder,borderColor,points,borderSize) # border polygon
         for point in points:
-            pygamePIL.draw_circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
+            pygamePIL.draw.circle(partSurfaceForBorder,borderColor,point,halfBorderSize-1) # fill in the missing vertices
 
         return partSurface, partSurfaceForBorder
 
@@ -286,9 +286,9 @@ def _drawShapePart(
         pinRadius = curPartSize/6
 
         if drawShadow:
-            pygamePIL.draw_circle(partSurface,SHADOW_COLOR,pinCenter,pinRadius+halfBorderSize) # shadow
+            pygamePIL.draw.circle(partSurface,SHADOW_COLOR,pinCenter,pinRadius+halfBorderSize) # shadow
 
-        pygamePIL.draw_circle(partSurface,PIN_COLOR,pinCenter,pinRadius) # main circle
+        pygamePIL.draw.circle(partSurface,PIN_COLOR,pinCenter,pinRadius) # main circle
 
         return partSurface, None
 
@@ -311,25 +311,25 @@ def _drawShapePart(
             )
 
             if drawShadow:
-                pygamePIL.draw_circle(partSurface,SHADOW_COLOR, # shadow
+                pygamePIL.draw.circle(partSurface,SHADOW_COLOR, # shadow
                     (halfBorderSize,withBorderPartSize-halfBorderSize),
                     curPartSize+halfBorderSize,
                     borderSize,
                     draw_top_right=True
                 )
 
-            pygamePIL.draw_circle(partSurface,color, # main circle
+            pygamePIL.draw.circle(partSurface,color, # main circle
                 (halfBorderSize,withBorderPartSize-halfBorderSize),
                 curPartSize,
                 draw_top_right=True
             )
-            pygamePIL.draw_arc(partSurface,darkenedColor, # 1st darkened area
+            pygamePIL.draw.arc(partSurface,darkenedColor, # 1st darkened area
                 darkenedAreasRect,
                 startAngle1,
                 stopAngle1,
                 math.ceil(curPartSize)
             )
-            pygamePIL.draw_arc(partSurface,darkenedColor, # 2nd darkened area
+            pygamePIL.draw.arc(partSurface,darkenedColor, # 2nd darkened area
                 darkenedAreasRect,
                 startAngle2,
                 stopAngle2,
@@ -356,11 +356,11 @@ def _drawShapePart(
                 darkenedArea = [sideMiddlePoint,points[1],points[2]]
 
             if drawShadow:
-                pygamePIL.draw_polygon(partSurface,SHADOW_COLOR,shadowPoints) # shadow
+                pygamePIL.draw.polygon(partSurface,SHADOW_COLOR,shadowPoints) # shadow
 
-            pygamePIL.draw_polygon(partSurface,color,points) # main polygon
+            pygamePIL.draw.polygon(partSurface,color,points) # main polygon
 
-            pygamePIL.draw_polygon(partSurface,darkenedColor,darkenedArea) # darkened area
+            pygamePIL.draw.polygon(partSurface,darkenedColor,darkenedArea) # darkened area
 
             return partSurface, None
 
@@ -368,7 +368,7 @@ def _drawShapePart(
 
 def _drawColorblindPatterns(layerSurface:pygamePIL.Surface,color:gameObjects.Color) -> None:
 
-    curMask = pygamePIL.mask_from_surface(layerSurface,200)
+    curMask = pygamePIL.mask.from_surface(layerSurface,200)
 
     for colors,pattern in zip(
         (["r","m","y","w"],["g","y","c","w"],["b","c","m","w"]),
@@ -401,7 +401,7 @@ def _rotateSurf(toRotate:pygamePIL.Surface,numParts:int,partIndex:int,layerIndex
         pygamePIL.SRCALPHA
     )
     tempSurf.blit(toRotate,(curShapeSize/2,0))
-    tempSurf = pygamePIL.transform_rotate(tempSurf,-((360/numParts)*partIndex))
+    tempSurf = pygamePIL.transform.rotate(tempSurf,-((360/numParts)*partIndex))
     return tempSurf
 
 # reduce displayed type annotations length
@@ -415,7 +415,7 @@ def renderShape(
 ) -> pygamePIL.Surface:
 
     returnSurface = pygamePIL.Surface((FAKE_SURFACE_SIZE,FAKE_SURFACE_SIZE),pygamePIL.SRCALPHA)
-    pygamePIL.draw_circle(returnSurface,BG_CIRCLE_COLOR,(FAKE_SURFACE_SIZE/2,FAKE_SURFACE_SIZE/2),BG_CIRCLE_DIAMETER/2)
+    pygamePIL.draw.circle(returnSurface,BG_CIRCLE_COLOR,(FAKE_SURFACE_SIZE/2,FAKE_SURFACE_SIZE/2),BG_CIRCLE_DIAMETER/2)
 
     for layerIndex, layer in enumerate(shape.layers):
 
@@ -450,4 +450,4 @@ def renderShape(
             _blitCentered(_rotateSurf(border,shape.numParts,partIndex,layerIndex,SHAPE_SIZE),returnSurface)
 
     # pygame doesn't work well at low resolution so render at size 500 then downscale to the desired size
-    return pygamePIL.transform_smoothscale(returnSurface,(surfaceSize,surfaceSize))
+    return pygamePIL.transform.smoothscale(returnSurface,(surfaceSize,surfaceSize))

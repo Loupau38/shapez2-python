@@ -120,12 +120,12 @@ QUAD_SHAPES_CONFIG = gameObjects.ShapesConfiguration(
     _PIN_PART,
     _CRYSTAL_PART,
     [
-        gameObjects.ShapePartType("C"),
-        gameObjects.ShapePartType("R"),
-        gameObjects.ShapePartType("S"),
-        gameObjects.ShapePartType("W"),
-        _PIN_PART,
-        _CRYSTAL_PART
+        (gameObjects.ShapePartType("C"),0),
+        (gameObjects.ShapePartType("R"),0),
+        (gameObjects.ShapePartType("S"),1),
+        (gameObjects.ShapePartType("W"),2),
+        (_PIN_PART,3),
+        (_CRYSTAL_PART,3)
     ]
 )
 HEX_SHAPES_CONFIG = gameObjects.ShapesConfiguration(
@@ -134,10 +134,10 @@ HEX_SHAPES_CONFIG = gameObjects.ShapesConfiguration(
     _PIN_PART,
     _CRYSTAL_PART,
     [
-        gameObjects.ShapePartType("H"),
-        gameObjects.ShapePartType("F"),
-        gameObjects.ShapePartType("G"),
-        _PIN_PART,
-        _CRYSTAL_PART
+        (gameObjects.ShapePartType("H"),0),
+        (gameObjects.ShapePartType("G"),1),
+        (gameObjects.ShapePartType("F"),2),
+        (_PIN_PART,3),
+        (_CRYSTAL_PART,3)
     ]
 )

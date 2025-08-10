@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shapez2"
-version = "1.2.0"
+version = "2.0.0"
 authors = [
-  {name = "Loupau 38"},
+    {name = "Loupau 38"},
 ]
 description = "A package to code tools for shapez 2"
 readme = "README.md"
@@ -18,7 +18,13 @@ classifiers = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "Pillow>=11.1.0"
+    "Pillow>=11.1.0",
+    "fixedint>=0.2.0"
+]
+
+[project.optional-dependencies]
+pygame = [
+    "pygame>=2.6.1"
 ]
 
 [project.urls]

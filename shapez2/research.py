@@ -591,10 +591,10 @@ class LinearUpgradeDisplayType(Enum):
 @dataclass
 class LinearUpgradeLevel:
     value:int
-    costs:Cost|None
+    cost:Cost|None
 _keyMappings[LinearUpgradeLevel] = {
     "value" : "Value",
-    "costs" : "Cost"
+    "cost" : "Cost"
 }
 
 @dataclass
