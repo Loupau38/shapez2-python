@@ -1,3 +1,6 @@
+## 2.0.1
+- Fix feature tag decoding not accepting `=` separator if the value doesn't have surrounding `"`
+
 ## 2.0.0
 - Add gameCode module
   - Add shape part map generation rareness info to `gameObjects.ShapesConfiguration`

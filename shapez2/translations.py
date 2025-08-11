@@ -293,13 +293,9 @@ def _decodeRawString(raw:str,language:Language|None) -> FeatureString:
             feature, value = tag.split(":")
         elif tag.count("=") == 1:
             feature, value = tag.split("=")
+            valueSep = ValueSep.equals
             if value.startswith('"') and value.endswith('"'):
                 value = value.removeprefix('"').removesuffix('"')
-                valueSep = ValueSep.equals
-            else:
-                feature = tag
-                value = None
-                valueSep = None
         else:
             feature = tag
             value = None

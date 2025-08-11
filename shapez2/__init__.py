@@ -1,8 +1,8 @@
 from . import (
-    gameCode,
     blueprints,
     blueprintsExtraData,
     buildings,
+    gameCode,
     gameObjects,
     ingameData,
     islands,
