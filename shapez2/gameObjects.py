@@ -130,6 +130,9 @@ class ShapePart:
             + (shapeCodes.EMPTY_CHAR if self.color is None else self.color.code)
         )
 
+    def copy(self) -> typing.Self:
+        return ShapePart(self.type,self.color)
+
 from . import ingameData, shapeCodes # circular import workaround
 
 class Shape:
@@ -162,6 +165,9 @@ class Shape:
     
     def isEmpty(self) -> bool:
         return all(p.type is None for l in self.layers for p in l)
+
+    def copy(self) -> typing.Self:
+        return Shape([[p.copy() for p in l] for l in self.layers])
 
     def __eq__(self,other:object) -> bool:
         if not isinstance(other,Shape):

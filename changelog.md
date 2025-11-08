@@ -1,3 +1,6 @@
+## 2.1.0
+- Add `copy` method to `gameObjects.ShapePart` and `gameObjects.Shape`
+
 ## 2.0.1
 - Fix feature tag decoding not accepting `=` separator if the value doesn't have surrounding `"`
 
