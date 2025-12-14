@@ -382,6 +382,9 @@ def decodeEntryExtraData(rawDecoded:bytes,entryType:str) -> BuildingExtraData|Is
 
     if entryType in _ISLAND_IDS["disableableTrainUnloadingLanes"]:
 
+        if rawDecoded == b"":
+            rawDecoded = bytes([0,0,0,0])
+
         _checkStringLength(rawDecoded,4)
 
         numDisabledLanes = int.from_bytes(rawDecoded[:4],"little",signed=True)

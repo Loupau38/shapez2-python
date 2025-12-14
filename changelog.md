@@ -1,3 +1,6 @@
+## 2.1.1
+- Fix disableable train unloading lanes additional data not having a default value when not present
+
 ## 2.1.0
 - Add `copy` method to `gameObjects.ShapePart` and `gameObjects.Shape`
 
