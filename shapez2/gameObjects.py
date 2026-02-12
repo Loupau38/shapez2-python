@@ -1,3 +1,5 @@
+from . import utils
+
 import typing
 from dataclasses import dataclass
 
@@ -147,7 +149,7 @@ class Shape:
         cls,
         shapeCode:str,
         shapesConfig:ShapesConfiguration,
-        colorScheme:ColorScheme=ingameData.DEFAULT_COLOR_SCHEME
+        colorScheme:ColorScheme
     ) -> typing.Self:
         return cls([
             [
@@ -176,3 +178,128 @@ class Shape:
 
     def __hash__(self) -> int:
         return hash(self.toShapeCode())
+
+class IFluid: ...
+
+@dataclass
+class ColorFluid(IFluid):
+    color:Color
+
+class FluidUnit:
+
+    UNITS_PER_LITER = 38419920000
+
+    def __init__(self,units:int):
+        self.units = units
+
+    @classmethod
+    def fromLiters(liters:int) -> typing.Self:
+        return FluidUnit(liters*FluidUnit.UNITS_PER_LITER)
+
+    def toLiters(self) -> float:
+        return self.units / self.UNITS_PER_LITER
+
+class IBeltItem: ...
+
+@dataclass
+class ShapeItem(IBeltItem):
+    shape:Shape
+
+@dataclass
+class FluidPackageItem(IBeltItem):
+    fluid:IFluid|None
+    size:FluidUnit
+
+@dataclass
+class ShapePackageOnTrack(IBeltItem):
+    amount:int
+    shape:ShapeItem|None
+
+@dataclass
+class FluidPackageOnTrack(IBeltItem):
+    amount:int
+    fluid:IFluid|None
+
+class ISignal: ...
+
+class NullSignal(ISignal): ...
+
+class ConflictSignal(ISignal): ...
+
+@dataclass
+class IntegerSignal(ISignal):
+    value:int
+
+@dataclass
+class BeltItemSignal(ISignal):
+    beltItem:IBeltItem|None
+
+    @classmethod
+    def fromBeltItem(beltItem:IBeltItem|None) -> typing.Self:
+        if beltItem is None:
+            return NullSignal()
+        return BeltItemSignal(beltItem)
+
+@dataclass
+class FluidSignal(ISignal):
+    fluid:IFluid|None
+
+    @classmethod
+    def fromFluid(fluid:IFluid|None) -> typing.Self:
+        if fluid is None:
+            return NullSignal()
+        return FluidSignal(fluid)
+
+
+
+class IBuildingConfig: ...
+
+@dataclass
+class LabelConfig(IBuildingConfig):
+    text:str|None
+
+@dataclass
+class SignalProducerConfig(IBuildingConfig):
+    signal:ISignal|None
+
+
+
+@dataclass
+class RailConnectionColorFilter:
+    mask:int
+
+    @classmethod
+    def none() -> typing.Self:
+        return RailConnectionColorFilter(0)
+
+    @classmethod
+    def all(colorCount:int) -> typing.Self:
+        return RailConnectionColorFilter((1 << colorCount)-1)
+
+    def containsColor(self,colorIndex:int) -> bool:
+        return (self.mask & (1 << colorIndex)) != 0
+
+    def addColor(self,colorIndex:int) -> None:
+        self.mask |= 1 << colorIndex
+
+    def removeColor(self,colorIndex:int) -> None:
+        # classic way would be self.mask &= ~(1 << colorIndex)
+        # but I don't want to deal with binary not on arbitrary sized ints
+        if self.containsColor(colorIndex):
+            self.mask -= 1 << colorIndex
+
+
+
+class IIslandConfig: ...
+
+@dataclass
+class RailConfig(IIslandConfig):
+    connectionFilters:list[RailConnectionColorFilter]
+
+@dataclass
+class DisableableTrainUnloadingLanesConfig(IIslandConfig):
+    disabledLanes:list[int]
+
+class GlobalChunkCoordinate(utils.Pos): ...
+
+class IslandTileCoordinate(utils.Pos): ...

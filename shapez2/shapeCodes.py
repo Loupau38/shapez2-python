@@ -1,16 +1,24 @@
-from . import gameObjects, ingameData
+from . import gameObjects
 
 LAYER_SEPARATOR = ":"
 EMPTY_CHAR = "-"
 
 def isShapeCodeValid(
     potentialShapeCode:str,
-    shapesConfig:gameObjects.ShapesConfiguration|None,
+    shapesConfig:gameObjects.ShapesConfiguration|list[gameObjects.ShapesConfiguration],
+    colorScheme:gameObjects.ColorScheme|list[gameObjects.ColorScheme],
     emptyShapeInvalid:bool=False
-) -> tuple[bool,str|None,gameObjects.ShapesConfiguration|None]:
+) -> tuple[bool,str,list[gameObjects.ShapesConfiguration],list[gameObjects.ColorScheme]]:
+
+    if isinstance(shapesConfig,gameObjects.ShapesConfiguration):
+        shapesConfig = [shapesConfig]
+    possibleShapesConfigs = []
+    if isinstance(colorScheme,gameObjects.ColorScheme):
+        colorScheme = [colorScheme]
+    possibleColorSchemes = []
 
     def inner() -> bool:
-        nonlocal errorMsg, shapesConfig
+        nonlocal errorMsg
 
         layers = potentialShapeCode.split(LAYER_SEPARATOR)
         layersLen = len(layers[0])
@@ -29,53 +37,59 @@ def isShapeCodeValid(
                 errorMsg = f"Layer {layerIndex+1} isn't the expected length ({layersLen})"
                 return False
 
-        def checkShapeTypesAndColors(shapesConfig:gameObjects.ShapesConfiguration) -> bool:
+        def checkShapeTypes(shapesConfig:gameObjects.ShapesConfiguration) -> bool:
             nonlocal errorMsg
             for layerIndex,layer in enumerate(layers):
 
-                for charIndex, char in enumerate(layer):
+                for charIndex in range(0,len(layer),2):
+                    shapeChar = layer[charIndex]
+                    colorChar = layer[charIndex+1]
 
-                    if charIndex%2 == 0:
-                        if char == EMPTY_CHAR:
-                            nextIsColor = False
-                        else:
-                            if shapesConfig.partsByCode.get(char) is None:
-                                errorMsg = f"Invalid shape : {char}"
-                                return False
-                            nextIsColor = shapesConfig.partsByCode[char].hasColor
-
+                    if shapeChar == EMPTY_CHAR:
+                        nextIsColor = False
                     else:
-                        if nextIsColor:
-                            if ingameData.DEFAULT_COLOR_SCHEME.colorsByCode.get(char) is None:
-                                errorMsg = f"Invalid color : {char}"
-                                return False
-                        else:
-                            if char != EMPTY_CHAR:
-                                errorMsg = f"Color in layer {layerIndex+1} at character {charIndex+1} must be '{EMPTY_CHAR}'"
-                                return False
+                        curShape = shapesConfig.partsByCode.get(shapeChar)
+                        if curShape is None:
+                            errorMsg = f"Invalid shape : {shapeChar}"
+                            return False
+                        nextIsColor = curShape.hasColor
+
+                    if (not nextIsColor) and colorChar != EMPTY_CHAR:
+                        errorMsg = f"Color in layer {layerIndex+1} at character {charIndex+2} must be '{EMPTY_CHAR}'"
+                        return False
 
             return True
 
-        finalShapesConfig = None
-        for testShapesConfig in (
-            [ingameData.QUAD_SHAPES_CONFIG,ingameData.HEX_SHAPES_CONFIG]
-            if shapesConfig is None else
-            [shapesConfig]
-        ):
-            if checkShapeTypesAndColors(testShapesConfig):
-                finalShapesConfig = testShapesConfig
-                break
+        for testShapesConfig in shapesConfig:
+            if checkShapeTypes(testShapesConfig):
+                possibleShapesConfigs.append(testShapesConfig)
 
-        if finalShapesConfig is None:
+        if len(possibleShapesConfigs) == 0:
             return False
-        shapesConfig = finalShapesConfig
 
-        if emptyShapeInvalid and gameObjects.Shape.fromShapeCode(potentialShapeCode,shapesConfig).isEmpty():
+        colors = [c for layer in layers for c in layer[1::2]]
+
+        def checkColors(colorScheme:gameObjects.ColorScheme) -> bool:
+            nonlocal errorMsg
+            for c in colors:
+                if (c != EMPTY_CHAR) and (colorScheme.colorsByCode.get(c) is None):
+                    errorMsg = f"Invalid color : {c}"
+                    return False
+            return True
+
+        for testColorScheme in colorScheme:
+            if checkColors(testColorScheme):
+                possibleColorSchemes.append(testColorScheme)
+
+        if len(possibleColorSchemes) == 0:
+            return False
+
+        if emptyShapeInvalid and all(c == EMPTY_CHAR for layer in layers for c in layer[::2]):
             errorMsg = "Shape is fully empty"
             return False
 
         return True
 
-    errorMsg = None
+    errorMsg = ""
     result = inner()
-    return result, errorMsg, shapesConfig
+    return result, errorMsg, possibleShapesConfigs, possibleColorSchemes
