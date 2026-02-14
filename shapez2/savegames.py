@@ -1,5 +1,5 @@
-from . import buildings, gameObjects, utils, islands, blueprintsExtraData, blueprints
-from .gameObjectsSerializer import (
+from . import buildings, gameObjects, utils, islands, _gameObjectsSerializer
+from ._gameObjectsSerializer import (
     Checkpoint,
     BinaryStreamReader,
     StringLUTReadWrite,
@@ -85,13 +85,12 @@ def _decodeIslands(
                 def _() -> None:
                     nonlocal islandConfig
 
-                    islandIds = blueprintsExtraData._ISLAND_IDS
-                    if islandDefinition.id in islandIds["rails"]:
-                        islandConfig = serializer.deserialize(reader,gameObjects.RailConfig)
-                    elif islandDefinition.id in islandIds["disableableTrainUnloadingLanes"]:
-                        islandConfig = serializer.deserialize(reader,gameObjects.DisableableTrainUnloadingLanesConfig)
-                    else:
-                        raise NotImplementedError("todo")
+                    islandConfig = _gameObjectsSerializer.deserializeIslandConfig(
+                        islandDefinition.id,
+                        reader,
+                        serializer,
+                        False
+                    )
 
             @reader.readBlob
             def _() -> None:
@@ -107,11 +106,12 @@ def _decodeIslands(
                     buildingConfig = None
 
                     if reader.readBool():
-                        buildingIds = blueprints.BuildingIds
-                        if buildingDefinition.id == buildingIds.label:
-                            buildingConfig = serializer.deserialize(reader,gameObjects.LabelConfig)
-                        elif buildingDefinition.id == buildingIds.signalProducer:
-                            pass
+                        buildingConfig = _gameObjectsSerializer.deserializeBuildingConfig(
+                            buildingDefinition.id,
+                            reader,
+                            serializer,
+                            False
+                        )
 
 def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 

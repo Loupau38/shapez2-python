@@ -1,4 +1,4 @@
-from . import gameObjects, utils, islands, buildings, shapeCodes
+from . import gameObjects, utils, islands, buildings, shapeCodes, blueprints, blueprintsExtraData
 
 import fixedint
 import enum
@@ -240,6 +240,16 @@ class GameObjectsSerializer:
         else:
             self.colorSchemes = colorScheme
 
+    def _processColorCode(self,colorCode:str) -> gameObjects.Color:
+        possibleColorSchemes:list[gameObjects.ColorScheme] = []
+        for testColorScheme in self.colorSchemes:
+            if colorCode in testColorScheme.colorsByCode:
+                possibleColorSchemes.append(testColorScheme)
+        if len(possibleColorSchemes) == 0:
+            raise InvalidSerializedData(f"Unknown color code : {colorCode}")
+        self.colorSchemes = possibleColorSchemes
+        return self.colorSchemes[0].colorsByCode[colorCode]
+
     def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
 
         # generic game objects
@@ -320,6 +330,42 @@ class GameObjectsSerializer:
                 self.colorSchemes[0]
             ))
 
+        if into == gameObjects.FluidPackageItem:
+            return gameObjects.FluidPackageItem(
+                self.deserialize(reader,gameObjects.IFluid),
+                self.deserialize(reader,gameObjects.FluidUnit)
+            )
+
+        if into == gameObjects.IFluid:
+            fluidType = reader.read(1)[0]
+            if fluidType == 0:
+                return None
+            if fluidType == 1:
+                return gameObjects.ColorFluid(
+                    self._processColorCode(chr(reader.read(1)[0]))
+                )
+            raise InvalidSerializedData(f"Unknown fluid type : {fluidType}")
+
+        if into == gameObjects.FluidUnit:
+            return gameObjects.FluidUnit(reader.readLong())
+
+        if into == gameObjects.FluidPackageOnTrack:
+            amount = reader.readShort()
+            return gameObjects.FluidPackageOnTrack(
+                amount,
+                None if amount == 0 else self.deserialize(reader,gameObjects.IFluid)
+            )
+
+        if into == gameObjects.ShapePackageOnTrack:
+            amount = reader.readShort()
+            return gameObjects.ShapePackageOnTrack(
+                amount,
+                None if amount == 0 else self.deserialize(reader,gameObjects.ShapeItem)
+            )
+
+        if into == gameObjects.SignalChannelId:
+            return gameObjects.SignalChannelId(reader.readInt())
+
         # island config
 
         if into == gameObjects.RailConfig:
@@ -343,6 +389,32 @@ class GameObjectsSerializer:
                 self.deserialize(reader,gameObjects.ISignal)
             )
 
+        if into == gameObjects.ItemProducerConfig:
+            return gameObjects.ItemProducerConfig(
+                self.deserialize(reader,gameObjects.IBeltItem)
+            )
+
+        if into == gameObjects.FluidProducerConfig:
+            return gameObjects.FluidProducerConfig(
+                self.deserialize(reader,gameObjects.IFluid)
+            )
+
+        if into == gameObjects.ButtonConfig:
+            return gameObjects.ButtonConfig(reader.readBool())
+
+        if into == gameObjects.CompareGateConfig:
+            compareMode = reader.read(1)[0]
+            if (compareMode < 1) or (compareMode > 6):
+                raise InvalidSerializedData(f"Unknown compare mode : {compareMode}")
+            return gameObjects.CompareGateConfig(
+                blueprintsExtraData.CompareMode(compareMode)
+            )
+
+        if into == gameObjects.GlobalSignalReceiverConfig:
+            return gameObjects.GlobalSignalReceiverConfig(
+                self.deserialize(reader,gameObjects.SignalChannelId)
+            )
+
         # other
 
         if into == islands.Island:
@@ -360,3 +432,57 @@ class GameObjectsSerializer:
             return building
 
         raise ValueError(f"Unknown type for deserialization : {into}")
+
+def deserializeBuildingConfig(
+    buildingId:str,
+    reader:BinaryStreamReader,
+    serializer:GameObjectsSerializer,
+    canBeNone:bool
+) -> gameObjects.IBuildingConfig|None:
+
+    buildingIds = blueprints.BuildingIds
+
+    data:dict[blueprints.BuildingIds,gameObjects.IBuildingConfig] = {
+        buildingIds.label : gameObjects.LabelConfig,
+        buildingIds.signalProducer : gameObjects.SignalProducerConfig,
+        buildingIds.itemProducer : gameObjects.ItemProducerConfig,
+        buildingIds.fluidProducer : gameObjects.FluidProducerConfig,
+        buildingIds.button : gameObjects.ButtonConfig,
+        buildingIds.compareGate : gameObjects.CompareGateConfig,
+        buildingIds.compareGateMirrored : gameObjects.CompareGateConfig,
+        buildingIds.globalSignalReceiver : gameObjects.GlobalSignalReceiverConfig,
+        buildingIds.globalSignalReceiverMirrored : gameObjects.GlobalSignalReceiverConfig,
+        buildingIds.operatorSignalRceiver : gameObjects.GlobalSignalReceiverConfig
+    }
+
+    for id,cls in data.items():
+        if buildingId == id:
+            return serializer.deserialize(reader,cls)
+
+    if canBeNone:
+        return None
+
+    raise InvalidSerializedData(f"Attempt to deserialize config of '{buildingId}' which shouldn't have any")
+
+def deserializeIslandConfig(
+    islandId:str,
+    reader:BinaryStreamReader,
+    serializer:GameObjectsSerializer,
+    canBeNone:bool
+) -> gameObjects.IIslandConfig|None:
+
+    islandIds = blueprintsExtraData._ISLAND_IDS
+
+    data:list[tuple[list[str],gameObjects.IIslandConfig]] = [
+        (islandIds["rails"],gameObjects.RailConfig),
+        (islandIds["disableableTrainUnloadingLanes"],gameObjects.DisableableTrainUnloadingLanesConfig)
+    ]
+
+    for ids,cls in data:
+        if islandId in ids:
+            return serializer.deserialize(reader,cls)
+
+    if canBeNone:
+        return None
+
+    raise InvalidSerializedData(f"Attempt to deserialize config of '{islandId}' which shouldn't have any")

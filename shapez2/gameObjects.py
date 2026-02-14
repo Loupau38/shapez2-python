@@ -1,4 +1,4 @@
-from . import utils
+from . import utils, blueprintsExtraData
 
 import typing
 from dataclasses import dataclass
@@ -135,7 +135,7 @@ class ShapePart:
     def copy(self) -> typing.Self:
         return ShapePart(self.type,self.color)
 
-from . import ingameData, shapeCodes # circular import workaround
+from . import shapeCodes # circular import workaround
 
 class Shape:
 
@@ -235,7 +235,7 @@ class BeltItemSignal(ISignal):
     beltItem:IBeltItem|None
 
     @classmethod
-    def fromBeltItem(beltItem:IBeltItem|None) -> typing.Self:
+    def fromBeltItem(beltItem:IBeltItem|None) -> ISignal:
         if beltItem is None:
             return NullSignal()
         return BeltItemSignal(beltItem)
@@ -245,10 +245,14 @@ class FluidSignal(ISignal):
     fluid:IFluid|None
 
     @classmethod
-    def fromFluid(fluid:IFluid|None) -> typing.Self:
+    def fromFluid(fluid:IFluid|None) -> ISignal:
         if fluid is None:
             return NullSignal()
         return FluidSignal(fluid)
+
+@dataclass
+class SignalChannelId:
+    uid:int
 
 
 
@@ -261,6 +265,26 @@ class LabelConfig(IBuildingConfig):
 @dataclass
 class SignalProducerConfig(IBuildingConfig):
     signal:ISignal|None
+
+@dataclass
+class ItemProducerConfig(IBuildingConfig):
+    beltItem:IBeltItem|None
+
+@dataclass
+class FluidProducerConfig(IBuildingConfig):
+    fluid:IFluid|None
+
+@dataclass
+class ButtonConfig(IBuildingConfig):
+    activated:bool
+
+@dataclass
+class CompareGateConfig(IBuildingConfig):
+    compareMode:blueprintsExtraData.CompareMode
+
+@dataclass
+class GlobalSignalReceiverConfig(IBuildingConfig):
+    channelId:SignalChannelId
 
 
 
