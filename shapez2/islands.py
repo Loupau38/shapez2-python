@@ -334,3 +334,32 @@ def getCategorizedIslandCounts(counts:dict[Island,int]) -> dict[IslandGroup,dict
         groups[curGroup][i] = c
 
     return groups
+
+_RAIL_PATH_TYPES = [
+    "Forward",
+    "LeftTurn",
+    "RightTurn",
+    "LeftFwdSplitter",
+    "RightFwdSplitter",
+    "YSplitter",
+    "YSplitterFlipped",
+    "TripleSplitter",
+    "TripleSplitterFlipped",
+    "RightFwdMerger",
+    "LeftFwdMerger",
+    "YMerger",
+    "TripleMerger"
+]
+
+ISLAND_IDS = {
+    "rails" : [
+        allIslands[f"Rail_{path}"].id
+        for path in _RAIL_PATH_TYPES
+    ],
+    "disableableTrainUnloadingLanes" : [
+        allIslands[f"Layout_Train{pt}_{ct}{s}{f}"].id
+        for ct in ("Shape","Fluid")
+        for pt,s in (("Unloader","s"),("Transfer",""))
+        for f in ("","_Flipped")
+    ]
+}

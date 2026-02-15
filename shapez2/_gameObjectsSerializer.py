@@ -1,8 +1,11 @@
-from . import gameObjects, utils, islands, buildings, shapeCodes, blueprints, blueprintsExtraData
+from . import gameObjects, utils, islands, buildings, shapeCodes, blueprintsExtraData
+from .buildings import BuildingIds
 
 import fixedint
 import enum
 from collections.abc import Callable
+import typing
+import inspect
 
 def checkpointHash(checkpointId:str) -> int:
     h = fixedint.UInt32(523423)
@@ -17,14 +20,14 @@ def checkpointHash(checkpointId:str) -> int:
     return int(h)
 
 class Checkpoint(enum.Enum):
-    BlobStart = checkpointHash("blob:start")
-    BlobEnd = checkpointHash("blob:end")
-    Island = checkpointHash("island")
-    Buildings = checkpointHash("buildings")
-    Building = checkpointHash("building")
+    blobStart = checkpointHash("blob:start")
+    blobEnd = checkpointHash("blob:end")
+    island = checkpointHash("island")
+    buildings = checkpointHash("buildings")
+    building = checkpointHash("building")
 
-class EndOfStreamError(Exception): ...
 class InvalidSerializedData(Exception): ...
+class EndOfStreamError(InvalidSerializedData): ...
 
 class BinaryStreamReader:
 
@@ -66,6 +69,9 @@ class BinaryStreamReader:
     def readULong(self) -> int:
         return self._readGenericInt(8,False)
 
+    def readInt1(self) -> int:
+        return self.read(1)[0]
+
     def readString(self) -> str|None:
         l = self.readShort()
         if l < -1:
@@ -81,20 +87,22 @@ class BinaryStreamReader:
             return
         read = self.readUInt()
         if read != checkpoint.value:
-            raise InvalidSerializedData(f"Checkpoint mismatch, excpected {checkpoint.value}, got {read}")
+            raise InvalidSerializedData(
+                f"Checkpoint mismatch, excpected {checkpoint.value} ({checkpoint.name}), got {read}"
+            )
 
     def readBlob(self,callback:Callable[[],None]) -> None:
 
-        self.assertCheckpoint(Checkpoint.BlobStart)
+        self.assertCheckpoint(Checkpoint.blobStart)
         blobLen = self.readInt()
         startPos = self.pos
 
         callback()
 
         if self.pos != startPos+blobLen:
-            raise InvalidSerializedData("Blob length mismatch")
+            raise InvalidSerializedData("Blob isn't the expected length")
 
-        self.assertCheckpoint(Checkpoint.BlobEnd)
+        self.assertCheckpoint(Checkpoint.blobEnd)
 
 class BinaryStreamWriter:
 
@@ -135,6 +143,9 @@ class BinaryStreamWriter:
     def writeULong(self,v:int) -> None:
         self._writeGenericInt(v,8,False)
 
+    def writeInt1(self,v:int) -> None:
+        self.write(bytes([v]))
+
     def writeString(self,string:str|None) -> None:
         if string is None:
             self.writeShort(-1)
@@ -153,7 +164,7 @@ class BinaryStreamWriter:
 
     def writeBlob(self,callback:Callable[[],None]) -> None:
 
-        self.writeCheckpoint(Checkpoint.BlobStart)
+        self.writeCheckpoint(Checkpoint.blobStart)
         startPos = self.pos
         self.writeInt(0) # reserve space for the length
 
@@ -164,7 +175,7 @@ class BinaryStreamWriter:
         self.pos = startPos
         self.writeInt(blobLen)
         self.pos = endPos
-        self.writeCheckpoint(Checkpoint.BlobEnd)
+        self.writeCheckpoint(Checkpoint.blobEnd)
 
 class StringLUTReadWrite:
 
@@ -210,19 +221,19 @@ class BinaryStreamReaderWithStringLUT(BinaryStreamReader):
 
     def __init__(self,content:bytes,checkpoints:bool,stringLUT:StringLUTReadWrite):
         super().__init__(content,checkpoints)
-        self.stringLUT = stringLUT
+        self._stringLUT = stringLUT
 
     def readString(self) -> str|None:
-        return self.stringLUT.getString(self.readInt())
+        return self._stringLUT.getString(self.readInt())
 
 class BinaryStreamWriterWithStringLUT(BinaryStreamWriter):
 
     def __init__(self,checkpoints:bool,stringLUT:StringLUTReadWrite):
         super().__init__(checkpoints)
-        self.stringLUT = stringLUT
+        self._stringLUT = stringLUT
 
     def writeString(self,string:str|None) -> None:
-        self.writeInt(self.stringLUT.getIndex(string))
+        self.writeInt(self._stringLUT.getIndex(string))
 
 class GameObjectsSerializer:
 
@@ -265,16 +276,16 @@ class GameObjectsSerializer:
             return gameObjects.IslandTileCoordinate(
                 reader.readShort(),
                 reader.readShort(),
-                reader.read(1)[0]
+                reader.readInt1()
             )
 
         if into == utils.Rotation:
-            return utils.Rotation(reader.read(1)[0])
+            return utils.Rotation(reader.readInt1())
 
         # game objects for config
 
         if into == gameObjects.ISignal:
-            signalType = reader.read(1)[0]
+            signalType = reader.readInt1()
             if signalType == 0:
                 return None
             if signalType == 1:
@@ -298,7 +309,7 @@ class GameObjectsSerializer:
             raise InvalidSerializedData(f"Unknown signal type : {signalType}")
 
         if into == gameObjects.IBeltItem:
-            itemType = reader.read(1)[0]
+            itemType = reader.readInt1()
             if itemType == 0:
                 return None
             if itemType == 1:
@@ -337,12 +348,12 @@ class GameObjectsSerializer:
             )
 
         if into == gameObjects.IFluid:
-            fluidType = reader.read(1)[0]
+            fluidType = reader.readInt1()
             if fluidType == 0:
                 return None
             if fluidType == 1:
                 return gameObjects.ColorFluid(
-                    self._processColorCode(chr(reader.read(1)[0]))
+                    self._processColorCode(chr(reader.readInt1()))
                 )
             raise InvalidSerializedData(f"Unknown fluid type : {fluidType}")
 
@@ -403,7 +414,7 @@ class GameObjectsSerializer:
             return gameObjects.ButtonConfig(reader.readBool())
 
         if into == gameObjects.CompareGateConfig:
-            compareMode = reader.read(1)[0]
+            compareMode = reader.readInt1()
             if (compareMode < 1) or (compareMode > 6):
                 raise InvalidSerializedData(f"Unknown compare mode : {compareMode}")
             return gameObjects.CompareGateConfig(
@@ -433,6 +444,201 @@ class GameObjectsSerializer:
 
         raise ValueError(f"Unknown type for deserialization : {into}")
 
+    def serialize(self,writer:BinaryStreamWriter,obj:typing.Any,objTypeOverride:type|None=None) -> None:
+        """Specify a type override when serializing an interface or if 'obj' can be None !"""
+
+        if objTypeOverride is None:
+            if obj is None:
+                raise ValueError("Specify a type override when 'obj' can be None")
+            objType = type(obj)
+        else:
+            objType = objTypeOverride
+
+        typeMatch = None
+        def f(func:Callable[[typing.Any],None]) -> None:
+            nonlocal typeMatch
+            funcType = inspect.get_annotations(func)["obj"]
+            if objType == funcType:
+                if typeMatch is not None:
+                    raise ValueError(f"Attempt to serialize twice ('{typeMatch}' and '{funcType}')")
+                typeMatch = funcType
+                func(obj)
+
+        # generic game objects
+
+        @f
+        def _(obj:gameObjects.GlobalChunkCoordinate):
+            writer.writeInt(obj.x)
+            writer.writeInt(obj.y)
+            writer.writeShort(obj.z)
+
+        @f
+        def _(obj:gameObjects.IslandTileCoordinate):
+            writer.writeShort(obj.x)
+            writer.writeShort(obj.y)
+            writer.writeInt1(obj.z)
+
+        @f
+        def _(obj:utils.Rotation):
+            writer.writeInt1(obj.value)
+
+        # game objects for config
+
+        @f
+        def _(obj:gameObjects.ISignal):
+            if obj is None:
+                writer.writeInt1(0)
+                return
+            if isinstance(obj,gameObjects.NullSignal):
+                writer.writeInt1(1)
+                return
+            if isinstance(obj,gameObjects.ConflictSignal):
+                writer.writeInt1(2)
+                return
+            if isinstance(obj,gameObjects.IntegerSignal):
+                v = obj.value
+                if v == 0:
+                    writer.writeInt1(4)
+                elif v == 1:
+                    writer.writeInt1(5)
+                else:
+                    writer.writeInt1(3)
+                    writer.writeInt(v)
+                return
+            if isinstance(obj,gameObjects.BeltItemSignal):
+                writer.writeInt1(6)
+                self.serialize(writer,obj.beltItem,gameObjects.IBeltItem)
+                return
+            if isinstance(obj,gameObjects.FluidSignal):
+                writer.writeInt1(7)
+                self.serialize(writer,obj.fluid,gameObjects.IFluid)
+                return
+            raise ValueError(f"Unknown signal type : {type(obj)}")
+
+        @f
+        def _(obj:gameObjects.IBeltItem):
+            if obj is None:
+                writer.writeInt1(0)
+                return
+            if isinstance(obj,gameObjects.ShapeItem):
+                writer.writeInt1(1)
+                self.serialize(writer,obj)
+                return
+            if isinstance(obj,gameObjects.FluidPackageItem):
+                writer.writeInt1(2)
+                self.serialize(writer,obj)
+                return
+            if isinstance(obj,gameObjects.FluidPackageOnTrack):
+                writer.writeInt1(3)
+                self.serialize(writer,obj)
+                return
+            if isinstance(obj,gameObjects.ShapePackageOnTrack):
+                writer.writeInt1(4)
+                self.serialize(writer,obj)
+                return
+            raise ValueError(f"Unknown belt item type : {type(obj)}")
+
+        @f
+        def _(obj:gameObjects.ShapeItem):
+            if obj is None:
+                writer.writeBool(False)
+            else:
+                writer.writeBool(True)
+                writer.writeString(obj.shape.toShapeCode())
+
+        @f
+        def _(obj:gameObjects.FluidPackageItem):
+            self.serialize(writer,obj.fluid,gameObjects.IFluid)
+            self.serialize(writer,obj.size)
+
+        @f
+        def _(obj:gameObjects.IFluid):
+            if obj is None:
+                writer.writeInt1(0)
+                return
+            if isinstance(obj,gameObjects.ColorFluid):
+                writer.writeInt1(1)
+                writer.writeInt1(ord(obj.color.code))
+                return
+            raise ValueError(f"Unknown fluid type : {type(obj)}")
+
+        @f
+        def _(obj:gameObjects.FluidUnit):
+            writer.writeLong(obj.units)
+
+        @f
+        def _(obj:gameObjects.FluidPackageOnTrack):
+            writer.writeShort(obj.amount)
+            if obj.amount != 0:
+                self.serialize(writer,obj.fluid,gameObjects.IFluid)
+
+        @f
+        def _(obj:gameObjects.ShapePackageOnTrack):
+            writer.writeShort(obj.amount)
+            if obj.amount != 0:
+                self.serialize(writer,obj.shape,gameObjects.ShapeItem)
+
+        @f
+        def _(obj:gameObjects.SignalChannelId):
+            writer.writeInt(obj.uid)
+
+        # island config
+
+        @f
+        def _(obj:gameObjects.RailConfig):
+            writer.writeInt1(len(obj.connectionFilters))
+            for colorFilter in obj.connectionFilters:
+                writer.writeInt(colorFilter.mask)
+
+        @f
+        def _(obj:gameObjects.DisableableTrainUnloadingLanesConfig):
+            writer.writeInt(len(obj.disabledLanes))
+            for lane in obj.disabledLanes:
+                writer.writeInt(lane)
+
+        # building config
+
+        @f
+        def _(obj:gameObjects.LabelConfig):
+            writer.writeString(obj.text)
+
+        @f
+        def _(obj:gameObjects.SignalProducerConfig):
+            self.serialize(writer,obj.signal,gameObjects.ISignal)
+
+        @f
+        def _(obj:gameObjects.ItemProducerConfig):
+            self.serialize(writer,obj.beltItem,gameObjects.IBeltItem)
+
+        @f
+        def _(obj:gameObjects.FluidProducerConfig):
+            self.serialize(writer,obj.fluid,gameObjects.IFluid)
+
+        @f
+        def _(obj:gameObjects.ButtonConfig):
+            writer.writeBool(obj.activated)
+
+        @f
+        def _(obj:gameObjects.CompareGateConfig):
+            writer.writeInt1(obj.compareMode.value)
+
+        @f
+        def _(obj:gameObjects.GlobalSignalReceiverConfig):
+            self.serialize(writer,obj.channelId)
+
+        # other
+
+        @f
+        def _(obj:islands.Island):
+            writer.writeString(obj.id)
+
+        @f
+        def _(obj:buildings.BuildingInternalVariant):
+            writer.writeString(obj.id)
+
+        if typeMatch is None:
+            raise ValueError(f"Unknown type for serialization : {objType}")
+
 def deserializeBuildingConfig(
     buildingId:str,
     reader:BinaryStreamReader,
@@ -440,19 +646,17 @@ def deserializeBuildingConfig(
     canBeNone:bool
 ) -> gameObjects.IBuildingConfig|None:
 
-    buildingIds = blueprints.BuildingIds
-
-    data:dict[blueprints.BuildingIds,gameObjects.IBuildingConfig] = {
-        buildingIds.label : gameObjects.LabelConfig,
-        buildingIds.signalProducer : gameObjects.SignalProducerConfig,
-        buildingIds.itemProducer : gameObjects.ItemProducerConfig,
-        buildingIds.fluidProducer : gameObjects.FluidProducerConfig,
-        buildingIds.button : gameObjects.ButtonConfig,
-        buildingIds.compareGate : gameObjects.CompareGateConfig,
-        buildingIds.compareGateMirrored : gameObjects.CompareGateConfig,
-        buildingIds.globalSignalReceiver : gameObjects.GlobalSignalReceiverConfig,
-        buildingIds.globalSignalReceiverMirrored : gameObjects.GlobalSignalReceiverConfig,
-        buildingIds.operatorSignalRceiver : gameObjects.GlobalSignalReceiverConfig
+    data:dict[BuildingIds,gameObjects.IBuildingConfig] = {
+        BuildingIds.label : gameObjects.LabelConfig,
+        BuildingIds.signalProducer : gameObjects.SignalProducerConfig,
+        BuildingIds.itemProducer : gameObjects.ItemProducerConfig,
+        BuildingIds.fluidProducer : gameObjects.FluidProducerConfig,
+        BuildingIds.button : gameObjects.ButtonConfig,
+        BuildingIds.compareGate : gameObjects.CompareGateConfig,
+        BuildingIds.compareGateMirrored : gameObjects.CompareGateConfig,
+        BuildingIds.globalSignalReceiver : gameObjects.GlobalSignalReceiverConfig,
+        BuildingIds.globalSignalReceiverMirrored : gameObjects.GlobalSignalReceiverConfig,
+        BuildingIds.operatorSignalRceiver : gameObjects.GlobalSignalReceiverConfig
     }
 
     for id,cls in data.items():
@@ -471,11 +675,9 @@ def deserializeIslandConfig(
     canBeNone:bool
 ) -> gameObjects.IIslandConfig|None:
 
-    islandIds = blueprintsExtraData._ISLAND_IDS
-
     data:list[tuple[list[str],gameObjects.IIslandConfig]] = [
-        (islandIds["rails"],gameObjects.RailConfig),
-        (islandIds["disableableTrainUnloadingLanes"],gameObjects.DisableableTrainUnloadingLanesConfig)
+        (islands.ISLAND_IDS["rails"],gameObjects.RailConfig),
+        (islands.ISLAND_IDS["disableableTrainUnloadingLanes"],gameObjects.DisableableTrainUnloadingLanesConfig)
     ]
 
     for ids,cls in data:

@@ -5,7 +5,8 @@ from . import(
     utils,
     ingameData
 )
-from .blueprints import BuildingIds, BlueprintError, _checkStringLength
+from .blueprints import BlueprintError, _checkStringLength
+from .buildings import BuildingIds
 
 import enum
 from dataclasses import dataclass

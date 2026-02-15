@@ -1,7 +1,8 @@
-from . import utils, blueprintsExtraData
+from . import utils
 
 import typing
 from dataclasses import dataclass
+import enum
 
 @dataclass
 class Color:
@@ -250,6 +251,14 @@ class FluidSignal(ISignal):
             return NullSignal()
         return FluidSignal(fluid)
 
+class CompareMode(enum.Enum):
+    Equal = 1
+    GreaterEqual = 2
+    Greater = 3
+    Less = 4
+    LessEqual = 5
+    NotEqual = 6
+
 @dataclass
 class SignalChannelId:
     uid:int
@@ -280,7 +289,7 @@ class ButtonConfig(IBuildingConfig):
 
 @dataclass
 class CompareGateConfig(IBuildingConfig):
-    compareMode:blueprintsExtraData.CompareMode
+    compareMode:CompareMode
 
 @dataclass
 class GlobalSignalReceiverConfig(IBuildingConfig):
