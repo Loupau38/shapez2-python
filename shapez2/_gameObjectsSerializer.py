@@ -1,4 +1,4 @@
-from . import gameObjects, utils, islands, buildings, shapeCodes, blueprintsExtraData
+from . import gameObjects, utils, islands, buildings, shapeCodes
 from .buildings import BuildingIds
 
 import fixedint
@@ -418,7 +418,7 @@ class GameObjectsSerializer:
             if (compareMode < 1) or (compareMode > 6):
                 raise InvalidSerializedData(f"Unknown compare mode : {compareMode}")
             return gameObjects.CompareGateConfig(
-                blueprintsExtraData.CompareMode(compareMode)
+                gameObjects.CompareMode(compareMode)
             )
 
         if into == gameObjects.GlobalSignalReceiverConfig:
