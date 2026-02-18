@@ -263,7 +263,7 @@ class GameObjectsSerializer:
 
     def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
 
-        # generic game objects
+        # general game objects
 
         if into == gameObjects.GlobalChunkCoordinate:
             return gameObjects.GlobalChunkCoordinate(
@@ -284,7 +284,7 @@ class GameObjectsSerializer:
 
         # game objects for config
 
-        if into == gameObjects.ISignal:
+        if into == gameObjects.GenericSignal:
             signalType = reader.readInt1()
             if signalType == 0:
                 return None
@@ -300,15 +300,15 @@ class GameObjectsSerializer:
                 return gameObjects.IntegerSignal(1)
             if signalType == 6:
                 return gameObjects.BeltItemSignal.fromBeltItem(
-                    self.deserialize(reader,gameObjects.IBeltItem)
+                    self.deserialize(reader,gameObjects.GenericBeltItem)
                 )
             if signalType == 7:
                 return gameObjects.FluidSignal.fromFluid(
-                    self.deserialize(reader,gameObjects.IFluid)
+                    self.deserialize(reader,gameObjects.GenericFluid)
                 )
             raise InvalidSerializedData(f"Unknown signal type : {signalType}")
 
-        if into == gameObjects.IBeltItem:
+        if into == gameObjects.GenericBeltItem:
             itemType = reader.readInt1()
             if itemType == 0:
                 return None
@@ -335,7 +335,7 @@ class GameObjectsSerializer:
                 raise InvalidSerializedData(f"Invalid shape code : {error}")
             self.shapesConfigs = shapeConfigs
             self.colorSchemes = colorSchemes
-            return gameObjects.ShapeItem(gameObjects.Shape.fromShapeCode(
+            return gameObjects.ShapeItem(shapeCodes.parseShape(
                 shapeCode,
                 self.shapesConfigs[0],
                 self.colorSchemes[0]
@@ -343,11 +343,11 @@ class GameObjectsSerializer:
 
         if into == gameObjects.FluidPackageItem:
             return gameObjects.FluidPackageItem(
-                self.deserialize(reader,gameObjects.IFluid),
+                self.deserialize(reader,gameObjects.GenericFluid),
                 self.deserialize(reader,gameObjects.FluidUnit)
             )
 
-        if into == gameObjects.IFluid:
+        if into == gameObjects.GenericFluid:
             fluidType = reader.readInt1()
             if fluidType == 0:
                 return None
@@ -364,7 +364,7 @@ class GameObjectsSerializer:
             amount = reader.readShort()
             return gameObjects.FluidPackageOnTrack(
                 amount,
-                None if amount == 0 else self.deserialize(reader,gameObjects.IFluid)
+                None if amount == 0 else self.deserialize(reader,gameObjects.GenericFluid)
             )
 
         if into == gameObjects.ShapePackageOnTrack:
@@ -397,17 +397,17 @@ class GameObjectsSerializer:
 
         if into == gameObjects.SignalProducerConfig:
             return gameObjects.SignalProducerConfig(
-                self.deserialize(reader,gameObjects.ISignal)
+                self.deserialize(reader,gameObjects.GenericSignal)
             )
 
         if into == gameObjects.ItemProducerConfig:
             return gameObjects.ItemProducerConfig(
-                self.deserialize(reader,gameObjects.IBeltItem)
+                self.deserialize(reader,gameObjects.GenericBeltItem)
             )
 
         if into == gameObjects.FluidProducerConfig:
             return gameObjects.FluidProducerConfig(
-                self.deserialize(reader,gameObjects.IFluid)
+                self.deserialize(reader,gameObjects.GenericFluid)
             )
 
         if into == gameObjects.ButtonConfig:
@@ -426,7 +426,7 @@ class GameObjectsSerializer:
                 self.deserialize(reader,gameObjects.SignalChannelId)
             )
 
-        # other
+        # specific cases
 
         if into == islands.Island:
             islandId = reader.readString()
@@ -445,7 +445,7 @@ class GameObjectsSerializer:
         raise ValueError(f"Unknown type for deserialization : {into}")
 
     def serialize(self,writer:BinaryStreamWriter,obj:typing.Any,objTypeOverride:type|None=None) -> None:
-        """Specify a type override when serializing an interface or if 'obj' can be None !"""
+        """Specify a type override when serializing a generic or if 'obj' can be None !"""
 
         if objTypeOverride is None:
             if obj is None:
@@ -464,7 +464,7 @@ class GameObjectsSerializer:
                 typeMatch = funcType
                 func(obj)
 
-        # generic game objects
+        # general game objects
 
         @f
         def _(obj:gameObjects.GlobalChunkCoordinate):
@@ -485,7 +485,7 @@ class GameObjectsSerializer:
         # game objects for config
 
         @f
-        def _(obj:gameObjects.ISignal):
+        def _(obj:gameObjects.GenericSignal):
             if obj is None:
                 writer.writeInt1(0)
                 return
@@ -507,16 +507,16 @@ class GameObjectsSerializer:
                 return
             if isinstance(obj,gameObjects.BeltItemSignal):
                 writer.writeInt1(6)
-                self.serialize(writer,obj.beltItem,gameObjects.IBeltItem)
+                self.serialize(writer,obj.beltItem,gameObjects.GenericBeltItem)
                 return
             if isinstance(obj,gameObjects.FluidSignal):
                 writer.writeInt1(7)
-                self.serialize(writer,obj.fluid,gameObjects.IFluid)
+                self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
                 return
             raise ValueError(f"Unknown signal type : {type(obj)}")
 
         @f
-        def _(obj:gameObjects.IBeltItem):
+        def _(obj:gameObjects.GenericBeltItem):
             if obj is None:
                 writer.writeInt1(0)
                 return
@@ -548,11 +548,11 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.FluidPackageItem):
-            self.serialize(writer,obj.fluid,gameObjects.IFluid)
+            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
             self.serialize(writer,obj.size)
 
         @f
-        def _(obj:gameObjects.IFluid):
+        def _(obj:gameObjects.GenericFluid):
             if obj is None:
                 writer.writeInt1(0)
                 return
@@ -570,7 +570,7 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.FluidPackageOnTrack):
             writer.writeShort(obj.amount)
             if obj.amount != 0:
-                self.serialize(writer,obj.fluid,gameObjects.IFluid)
+                self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
 
         @f
         def _(obj:gameObjects.ShapePackageOnTrack):
@@ -604,15 +604,15 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.SignalProducerConfig):
-            self.serialize(writer,obj.signal,gameObjects.ISignal)
+            self.serialize(writer,obj.signal,gameObjects.GenericSignal)
 
         @f
         def _(obj:gameObjects.ItemProducerConfig):
-            self.serialize(writer,obj.beltItem,gameObjects.IBeltItem)
+            self.serialize(writer,obj.beltItem,gameObjects.GenericBeltItem)
 
         @f
         def _(obj:gameObjects.FluidProducerConfig):
-            self.serialize(writer,obj.fluid,gameObjects.IFluid)
+            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
 
         @f
         def _(obj:gameObjects.ButtonConfig):
@@ -626,7 +626,7 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.GlobalSignalReceiverConfig):
             self.serialize(writer,obj.channelId)
 
-        # other
+        # specifc cases
 
         @f
         def _(obj:islands.Island):
@@ -644,9 +644,9 @@ def deserializeBuildingConfig(
     reader:BinaryStreamReader,
     serializer:GameObjectsSerializer,
     canBeNone:bool
-) -> gameObjects.IBuildingConfig|None:
+) -> gameObjects.GenericBuildingConfig|None:
 
-    data:dict[BuildingIds,gameObjects.IBuildingConfig] = {
+    data:dict[BuildingIds,type[gameObjects.GenericBuildingConfig]] = {
         BuildingIds.label : gameObjects.LabelConfig,
         BuildingIds.signalProducer : gameObjects.SignalProducerConfig,
         BuildingIds.itemProducer : gameObjects.ItemProducerConfig,
@@ -673,9 +673,9 @@ def deserializeIslandConfig(
     reader:BinaryStreamReader,
     serializer:GameObjectsSerializer,
     canBeNone:bool
-) -> gameObjects.IIslandConfig|None:
+) -> gameObjects.GenericIslandConfig|None:
 
-    data:list[tuple[list[str],gameObjects.IIslandConfig]] = [
+    data:list[tuple[list[str],type[gameObjects.GenericIslandConfig]]] = [
         (islands.ISLAND_IDS["rails"],gameObjects.RailConfig),
         (islands.ISLAND_IDS["disableableTrainUnloadingLanes"],gameObjects.DisableableTrainUnloadingLanesConfig)
     ]

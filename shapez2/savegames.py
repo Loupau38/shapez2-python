@@ -40,14 +40,14 @@ class PlacedBuilding:
     type:buildings.BuildingInternalVariant
     pos:gameObjects.IslandTileCoordinate
     rotation:utils.Rotation
-    configuration:gameObjects.IBuildingConfig|None
+    configuration:gameObjects.GenericBuildingConfig|None
 
 @dataclass
 class PlacedIsland:
     type:islands.Island
     pos:gameObjects.GlobalChunkCoordinate
     rotation:utils.Rotation
-    configuration:gameObjects.IIslandConfig|None
+    configuration:gameObjects.GenericIslandConfig|None
     placedBuildings:list[PlacedBuilding]
 
 @dataclass

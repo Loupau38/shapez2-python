@@ -93,3 +93,35 @@ def isShapeCodeValid(
     errorMsg = ""
     result = inner()
     return result, errorMsg, possibleShapesConfigs, possibleColorSchemes
+
+def parseShapePart(
+    partCode:str,
+    shapesConfig:gameObjects.ShapesConfiguration,
+    colorScheme:gameObjects.ColorScheme
+) -> gameObjects.ShapePart:
+    return gameObjects.ShapePart(
+        shapesConfig.partsByCode.get(partCode[0]),
+        colorScheme.colorsByCode.get(partCode[1])
+    )
+
+def parseShape(
+    shapeCode:str,
+    shapesConfig:gameObjects.ShapesConfiguration,
+    colorScheme:gameObjects.ColorScheme
+) -> gameObjects.Shape:
+    return gameObjects.Shape([
+        [
+            parseShapePart(l[i:i+1],shapesConfig,colorScheme)
+            for i in range(0,len(l),2)
+        ]
+        for l in shapeCode.split(LAYER_SEPARATOR)
+    ])
+
+def fromShapePart(shapePart:gameObjects.ShapePart) -> str:
+    return (
+        (EMPTY_CHAR if shapePart.type is None else shapePart.type.code)
+        + (EMPTY_CHAR if shapePart.color is None else shapePart.color.code)
+    )
+
+def fromShape(shape:gameObjects.Shape) -> str:
+    return LAYER_SEPARATOR.join("".join(fromShapePart(p) for p in l) for l in shape.layers)

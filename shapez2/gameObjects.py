@@ -122,21 +122,18 @@ class ShapesConfiguration:
     def __hash__(self) -> int:
         return hash(self.id)
 
+from . import shapeCodes # circular import workaround
+
 @dataclass
 class ShapePart:
     type:ShapePartType|None
     color:Color|None
 
     def toString(self) -> str:
-        return (
-            (shapeCodes.EMPTY_CHAR if self.type is None else self.type.code)
-            + (shapeCodes.EMPTY_CHAR if self.color is None else self.color.code)
-        )
+        return shapeCodes.fromShapePart(self)
 
     def copy(self) -> typing.Self:
         return ShapePart(self.type,self.color)
-
-from . import shapeCodes # circular import workaround
 
 class Shape:
 
@@ -145,26 +142,16 @@ class Shape:
         self.numLayers = len(layers)
         self.numParts = len(layers[0])
 
-    @classmethod
+    @staticmethod
     def fromShapeCode(
-        cls,
         shapeCode:str,
         shapesConfig:ShapesConfiguration,
         colorScheme:ColorScheme
     ) -> typing.Self:
-        return cls([
-            [
-                ShapePart(
-                    shapesConfig.partsByCode.get(l[i*2]),
-                    colorScheme.colorsByCode.get(l[(i*2)+1])
-                )
-                for i in range(len(l)//2)
-            ]
-            for l in shapeCode.split(shapeCodes.LAYER_SEPARATOR)
-        ])
+        return shapeCodes.parseShape(shapeCode,shapesConfig,colorScheme)
 
     def toShapeCode(self) -> str:
-        return shapeCodes.LAYER_SEPARATOR.join("".join(p.toString() for p in l) for l in self.layers)
+        return shapeCodes.fromShape(self)
     
     def isEmpty(self) -> bool:
         return all(p.type is None for l in self.layers for p in l)
@@ -180,10 +167,10 @@ class Shape:
     def __hash__(self) -> int:
         return hash(self.toShapeCode())
 
-class IFluid: ...
+class GenericFluid: ...
 
 @dataclass
-class ColorFluid(IFluid):
+class ColorFluid(GenericFluid):
     color:Color
 
 class FluidUnit:
@@ -194,62 +181,62 @@ class FluidUnit:
         self.units = units
 
     @classmethod
-    def fromLiters(liters:int) -> typing.Self:
-        return FluidUnit(liters*FluidUnit.UNITS_PER_LITER)
+    def fromLiters(cls,liters:int) -> typing.Self:
+        return cls(liters*cls.UNITS_PER_LITER)
 
     def toLiters(self) -> float:
         return self.units / self.UNITS_PER_LITER
 
-class IBeltItem: ...
+class GenericBeltItem: ...
 
 @dataclass
-class ShapeItem(IBeltItem):
+class ShapeItem(GenericBeltItem):
     shape:Shape
 
 @dataclass
-class FluidPackageItem(IBeltItem):
-    fluid:IFluid|None
+class FluidPackageItem(GenericBeltItem):
+    fluid:GenericFluid|None
     size:FluidUnit
 
 @dataclass
-class ShapePackageOnTrack(IBeltItem):
+class ShapePackageOnTrack(GenericBeltItem):
     amount:int
     shape:ShapeItem|None
 
 @dataclass
-class FluidPackageOnTrack(IBeltItem):
+class FluidPackageOnTrack(GenericBeltItem):
     amount:int
-    fluid:IFluid|None
+    fluid:GenericFluid|None
 
-class ISignal: ...
+class GenericSignal: ...
 
-class NullSignal(ISignal): ...
+class NullSignal(GenericSignal): ...
 
-class ConflictSignal(ISignal): ...
+class ConflictSignal(GenericSignal): ...
 
 @dataclass
-class IntegerSignal(ISignal):
+class IntegerSignal(GenericSignal):
     value:int
 
 @dataclass
-class BeltItemSignal(ISignal):
-    beltItem:IBeltItem|None
+class BeltItemSignal(GenericSignal):
+    beltItem:GenericBeltItem|None
 
     @classmethod
-    def fromBeltItem(beltItem:IBeltItem|None) -> ISignal:
+    def fromBeltItem(cls,beltItem:GenericBeltItem|None) -> GenericSignal:
         if beltItem is None:
             return NullSignal()
-        return BeltItemSignal(beltItem)
+        return cls(beltItem)
 
 @dataclass
-class FluidSignal(ISignal):
-    fluid:IFluid|None
+class FluidSignal(GenericSignal):
+    fluid:GenericFluid|None
 
     @classmethod
-    def fromFluid(fluid:IFluid|None) -> ISignal:
+    def fromFluid(cls,fluid:GenericFluid|None) -> GenericSignal:
         if fluid is None:
             return NullSignal()
-        return FluidSignal(fluid)
+        return cls(fluid)
 
 class CompareMode(enum.Enum):
     Equal = 1
@@ -265,34 +252,34 @@ class SignalChannelId:
 
 
 
-class IBuildingConfig: ...
+class GenericBuildingConfig: ...
 
 @dataclass
-class LabelConfig(IBuildingConfig):
+class LabelConfig(GenericBuildingConfig):
     text:str|None
 
 @dataclass
-class SignalProducerConfig(IBuildingConfig):
-    signal:ISignal|None
+class SignalProducerConfig(GenericBuildingConfig):
+    signal:GenericSignal|None
 
 @dataclass
-class ItemProducerConfig(IBuildingConfig):
-    beltItem:IBeltItem|None
+class ItemProducerConfig(GenericBuildingConfig):
+    beltItem:GenericBeltItem|None
 
 @dataclass
-class FluidProducerConfig(IBuildingConfig):
-    fluid:IFluid|None
+class FluidProducerConfig(GenericBuildingConfig):
+    fluid:GenericFluid|None
 
 @dataclass
-class ButtonConfig(IBuildingConfig):
+class ButtonConfig(GenericBuildingConfig):
     activated:bool
 
 @dataclass
-class CompareGateConfig(IBuildingConfig):
+class CompareGateConfig(GenericBuildingConfig):
     compareMode:CompareMode
 
 @dataclass
-class GlobalSignalReceiverConfig(IBuildingConfig):
+class GlobalSignalReceiverConfig(GenericBuildingConfig):
     channelId:SignalChannelId
 
 
@@ -302,12 +289,12 @@ class RailConnectionColorFilter:
     mask:int
 
     @classmethod
-    def none() -> typing.Self:
-        return RailConnectionColorFilter(0)
+    def none(cls) -> typing.Self:
+        return cls(0)
 
     @classmethod
-    def all(colorCount:int) -> typing.Self:
-        return RailConnectionColorFilter((1 << colorCount)-1)
+    def all(cls,colorCount:int) -> typing.Self:
+        return cls((1 << colorCount)-1)
 
     def containsColor(self,colorIndex:int) -> bool:
         return (self.mask & (1 << colorIndex)) != 0
@@ -323,14 +310,14 @@ class RailConnectionColorFilter:
 
 
 
-class IIslandConfig: ...
+class GenericIslandConfig: ...
 
 @dataclass
-class RailConfig(IIslandConfig):
+class RailConfig(GenericIslandConfig):
     connectionFilters:list[RailConnectionColorFilter]
 
 @dataclass
-class DisableableTrainUnloadingLanesConfig(IIslandConfig):
+class DisableableTrainUnloadingLanesConfig(GenericIslandConfig):
     disabledLanes:list[int]
 
 class GlobalChunkCoordinate(utils.Pos): ...

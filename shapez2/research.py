@@ -1011,7 +1011,7 @@ def decodeScenario(rawScenario:str) -> tuple[Scenario,list[str]]:
             shapeCodeValid, errorMsg, _ = shapeCodes.isShapeCodeValid(rawObj,curShapesConfig)
             if not shapeCodeValid:
                 raise ScenarioDecodeError(f"Invalid shape code : {errorMsg}")
-            return gameObjects.Shape.fromShapeCode(rawObj,curShapesConfig)
+            return shapeCodes.parseShape(rawObj,curShapesConfig)
 
         elif toClass == UnlockRequirements:
             newObj = UnlockRequirements(rawObj["RequiredUpgradeIds"],rawObj["RequiredMechanicIds"])

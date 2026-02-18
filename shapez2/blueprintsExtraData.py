@@ -243,7 +243,7 @@ def decodeEntryExtraData(rawDecoded:bytes,entryType:str) -> BuildingExtraData|Is
         if not valid:
             raise BlueprintError(f"Invalid shape code : {error}")
 
-        return ShapeGenerator(ShapeGeneratorType.shape,gameObjects.Shape.fromShapeCode(shapeCode,shapesConfig))
+        return ShapeGenerator(ShapeGeneratorType.shape,shapeCodes.parseShape(shapeCode,shapesConfig))
 
     def getValidFluidGenerator(rawString:bytes) -> FluidGenerator:
 

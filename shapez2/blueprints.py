@@ -85,7 +85,7 @@ class BlueprintIcon:
         if validShapeCode:
             return cls(
                 BlueprintIconType.shape,
-                shape=gameObjects.Shape.fromShapeCode(shapeCode,shapesConfig)
+                shape=shapeCodes.parseShape(shapeCode,shapesConfig)
             )
         return cls(BlueprintIconType.empty)
 
