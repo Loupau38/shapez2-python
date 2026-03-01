@@ -235,6 +235,63 @@ class BinaryStreamWriterWithStringLUT(BinaryStreamWriter):
     def writeString(self,string:str|None) -> None:
         self.writeInt(self._stringLUT.getIndex(string))
 
+def serializationId(id:str):
+    def wrapper(cls):
+        cls._serializationId = id
+        return cls
+    return wrapper
+
+class PolymorphicSerializer[T]:
+
+    def __init__(self,supportedTypes:list[type[T]],serializer:"GameObjectsSerializer"):
+
+        self.serializer = serializer
+
+        for t in supportedTypes:
+            if not hasattr(t,"_serializationId"):
+                raise ValueError(f"{t.__name__} doesn't have a serialization ID")
+
+        self.idsByType:dict[type[T],str] = {t:t._serializationId for t in supportedTypes}
+        self.typesById:dict[str,type[T]] = {t._serializationId:t for t in supportedTypes}
+
+    def deserialize(self,reader:BinaryStreamReader) -> T|None:
+
+        objTypeId = reader.readString()
+
+        if objTypeId is None:
+            return None
+
+        objType = self.typesById.get(objTypeId)
+
+        if objType is None:
+            raise InvalidSerializedData(f"Unknown serialization class ID : {objTypeId}")
+
+        obj:T
+        @reader.readBlob
+        def _():
+            nonlocal obj
+            obj = self.serializer.deserialize(reader,objType)
+
+        return obj
+
+    def serialize(self,writer:BinaryStreamWriter,obj:T|None) -> None:
+
+        if obj is None:
+            writer.writeString(None)
+            return
+
+        objType = type(obj)
+        objTypeId = self.idsByType.get(objType)
+
+        if objTypeId is None:
+            raise ValueError(f"Unknown type for polymorphic serialization : {objType.__name__}")
+
+        writer.writeString(objTypeId)
+
+        @writer.writeBlob
+        def _():
+            self.serializer.serialize(writer,obj)
+
 class GameObjectsSerializer:
 
     def __init__(
@@ -250,6 +307,11 @@ class GameObjectsSerializer:
             self.colorSchemes = [colorScheme]
         else:
             self.colorSchemes = colorScheme
+
+        self.simulationStateSerializer = PolymorphicSerializer(
+            gameObjects.GenericSimulationState.__subclasses__(),
+            self
+        )
 
     def _processColorCode(self,colorCode:str) -> gameObjects.Color:
         possibleColorSchemes:list[gameObjects.ColorScheme] = []
@@ -277,6 +339,13 @@ class GameObjectsSerializer:
                 reader.readShort(),
                 reader.readShort(),
                 reader.readInt1()
+            )
+
+        if into == gameObjects.GlobalTileCoordinate:
+            return gameObjects.GlobalTileCoordinate(
+                reader.readInt(),
+                reader.readInt(),
+                reader.readShort()
             )
 
         if into == utils.Rotation:
@@ -442,6 +511,28 @@ class GameObjectsSerializer:
                 raise InvalidSerializedData(f"Unknown building internal variant ID : {buildingId}")
             return building
 
+        # simulation states
+
+        if into == gameObjects.SimulationSteps:
+            return gameObjects.SimulationSteps(reader.readLong())
+
+        if into == gameObjects.BeltSlotState:
+            if reader.readBool():
+                return gameObjects.BeltSlotState(
+                    self.deserialize(reader,gameObjects.GenericBeltItem),
+                    self.deserialize(reader,gameObjects.SimulationSteps)
+                )
+            return gameObjects.BeltSlotState(None,None)
+
+        if into == gameObjects.GenericSimulationState:
+            return self.simulationStateSerializer.deserialize(reader)
+
+        if into == gameObjects.ConveyorSimulationState:
+            return gameObjects.ConveyorSimulationState(
+                self.deserialize(reader,gameObjects.BeltSlotState),
+                self.deserialize(reader,gameObjects.BeltSlotState)
+            )
+
         raise ValueError(f"Unknown type for deserialization : {into}")
 
     def serialize(self,writer:BinaryStreamWriter,obj:typing.Any,objTypeOverride:type|None=None) -> None:
@@ -477,6 +568,12 @@ class GameObjectsSerializer:
             writer.writeShort(obj.x)
             writer.writeShort(obj.y)
             writer.writeInt1(obj.z)
+
+        @f
+        def _(obj:gameObjects.GlobalTileCoordinate):
+            writer.writeInt(obj.x)
+            writer.writeInt(obj.y)
+            writer.writeShort(obj.z)
 
         @f
         def _(obj:utils.Rotation):
@@ -635,6 +732,30 @@ class GameObjectsSerializer:
         @f
         def _(obj:buildings.BuildingInternalVariant):
             writer.writeString(obj.id)
+
+        # simulation states
+
+        @f
+        def _(obj:gameObjects.SimulationSteps):
+            writer.writeLong(obj.steps)
+
+        @f
+        def _(obj:gameObjects.BeltSlotState):
+            if obj.item is None:
+                writer.writeBool(False)
+            else:
+                writer.writeBool(True)
+                self.serialize(writer,obj.item,gameObjects.GenericBeltItem)
+                self.serialize(writer,obj.progress)
+
+        @f
+        def _(obj:gameObjects.GenericSimulationState):
+            self.simulationStateSerializer.serialize(writer,obj)
+
+        @f
+        def _(obj:gameObjects.ConveyorSimulationState):
+            self.serialize(writer,obj.slot0)
+            self.serialize(writer,obj.slot1)
 
         if typeMatch is None:
             raise ValueError(f"Unknown type for serialization : {objType}")

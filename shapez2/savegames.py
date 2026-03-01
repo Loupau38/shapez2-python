@@ -41,6 +41,7 @@ class PlacedBuilding:
     pos:gameObjects.IslandTileCoordinate
     rotation:utils.Rotation
     configuration:gameObjects.GenericBuildingConfig|None
+    simulationState:gameObjects.GenericSimulationState|None=None
 
 @dataclass
 class PlacedIsland:
@@ -49,6 +50,7 @@ class PlacedIsland:
     rotation:utils.Rotation
     configuration:gameObjects.GenericIslandConfig|None
     placedBuildings:list[PlacedBuilding]
+    simulationState:gameObjects.GenericSimulationState|None=None
 
 @dataclass
 class SavegameMap:
@@ -171,6 +173,40 @@ def _decodeIslands(
 
     return decodedIslands
 
+def _decodeIslandStates(
+    reader:BinaryStreamReaderWithStringLUT,
+    serializer:GameObjectsSerializer,
+    islandsMap:dict[gameObjects.GlobalChunkCoordinate,PlacedIsland],
+    buildingsMap:dict[gameObjects.GlobalTileCoordinate,PlacedBuilding]
+) -> None:
+
+    def decodeIsland() -> None:
+
+        islandPos = serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate)
+        islandDefinition = serializer.deserialize(reader,islands.Island)
+
+        placedIsland = islandsMap.get(islandPos)
+
+        if placedIsland is None:
+            raise InvalidSerializedData(f"Island '{islandDefinition.id}' not found at {islandPos}")
+
+        if placedIsland.type != islandDefinition:
+            raise InvalidSerializedData(
+                f"Island '{placedIsland.type.id}' was expected to be '{islandDefinition.id}'"
+            )
+
+        @reader.readBlob
+        def _():
+            placedIsland.simulationState = serializer.deserialize(reader,gameObjects.GenericSimulationState)
+
+    for islandIndex in range(reader.readInt()):
+        try:
+            decodeIsland()
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(f"Error while reading island state #{islandIndex} : {e}")
+
+    ...
+
 def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
     with zipfile.ZipFile(file,"r") as f:
@@ -219,10 +255,9 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while reading strings LUT : {e}")
 
-    decodedIslands = []
+    decodedIslands:list[PlacedIsland] = []
 
     for bundleIndex,islandBundle in placedIslandsRaw:
-
         try:
             decodedIslands.extend(_decodeIslands(
                 BinaryStreamReaderWithStringLUT(
@@ -234,6 +269,30 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             ))
         except InvalidSerializedData as e:
             raise InvalidSerializedData(f"Error while reading island bundle #{bundleIndex} : {e}")
+
+    islandsMap = {i.pos:i for i in decodedIslands}
+
+    buildingsMap:dict[gameObjects.GlobalTileCoordinate,PlacedBuilding] = {}
+    for decodedIsland in decodedIslands:
+        for decodedBuilding in decodedIsland.placedBuildings:
+            buildingsMap[
+                decodedBuilding.pos.toGlobalTile(decodedIsland.pos)
+            ] = decodedBuilding
+
+    for bundleIndex,islandBundle in islandAndBuildingStatesRaw:
+        try:
+            _decodeIslandStates(
+                BinaryStreamReaderWithStringLUT(
+                    islandBundle,
+                    useCheckpoints,
+                    stringsLUT
+                ),
+                serializer,
+                islandsMap,
+                buildingsMap
+            )
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(f"Error while reading island state bundle #{bundleIndex} : {e}")
 
     # temp
     return Savegame(

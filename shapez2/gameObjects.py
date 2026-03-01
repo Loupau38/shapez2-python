@@ -1,8 +1,13 @@
-from . import utils
+from . import utils, islands
+from ._gameObjectsSerializer import serializationId as _serializationId
 
 import typing
 from dataclasses import dataclass
 import enum
+
+
+
+#region misc
 
 @dataclass
 class Color:
@@ -250,7 +255,71 @@ class CompareMode(enum.Enum):
 class SignalChannelId:
     uid:int
 
+class GlobalTileCoordinate(utils.Pos):
 
+    def toIslandTile(self,islandPos:"GlobalChunkCoordinate") -> "IslandTileCoordinate":
+        islandOrigin = islandPos.tileOrigin()
+        return IslandTileCoordinate(
+            self.x - islandOrigin.x,
+            self.y - islandOrigin.y,
+            self.z - islandOrigin.z
+        )
+
+    def containedInGlobalChunk(self) -> "GlobalChunkCoordinate":
+        return GlobalChunkCoordinate(
+            self.x // islands.ISLAND_SIZE,
+            self.y // islands.ISLAND_SIZE,
+            self.z // islands.ISLAND_SIZE
+        )
+
+class IslandTileCoordinate(utils.Pos):
+
+    def toGlobalTile(self,islandPos:"GlobalChunkCoordinate") -> GlobalTileCoordinate:
+        islandOrigin = islandPos.tileOrigin()
+        return GlobalTileCoordinate(
+            self.x + islandOrigin.x,
+            self.y + islandOrigin.y,
+            self.z + islandOrigin.z
+        )
+
+class GlobalChunkCoordinate(utils.Pos):
+
+    def tileOrigin(self) -> GlobalTileCoordinate:
+        return GlobalTileCoordinate(
+            self.x * islands.ISLAND_SIZE,
+            self.y * islands.ISLAND_SIZE,
+            self.z * islands.ISLAND_SIZE
+        )
+
+@dataclass
+class RailConnectionColorFilter:
+    mask:int
+
+    @classmethod
+    def none(cls) -> typing.Self:
+        return cls(0)
+
+    @classmethod
+    def all(cls,colorCount:int) -> typing.Self:
+        return cls((1 << colorCount)-1)
+
+    def containsColor(self,colorIndex:int) -> bool:
+        return (self.mask & (1 << colorIndex)) != 0
+
+    def addColor(self,colorIndex:int) -> None:
+        self.mask |= 1 << colorIndex
+
+    def removeColor(self,colorIndex:int) -> None:
+        # classic way would be self.mask &= ~(1 << colorIndex)
+        # but I don't want to deal with binary not on arbitrary sized ints
+        if self.containsColor(colorIndex):
+            self.mask -= 1 << colorIndex
+
+#endregion
+
+
+
+#region configs
 
 class GenericBuildingConfig: ...
 
@@ -284,32 +353,6 @@ class GlobalSignalReceiverConfig(GenericBuildingConfig):
 
 
 
-@dataclass
-class RailConnectionColorFilter:
-    mask:int
-
-    @classmethod
-    def none(cls) -> typing.Self:
-        return cls(0)
-
-    @classmethod
-    def all(cls,colorCount:int) -> typing.Self:
-        return cls((1 << colorCount)-1)
-
-    def containsColor(self,colorIndex:int) -> bool:
-        return (self.mask & (1 << colorIndex)) != 0
-
-    def addColor(self,colorIndex:int) -> None:
-        self.mask |= 1 << colorIndex
-
-    def removeColor(self,colorIndex:int) -> None:
-        # classic way would be self.mask &= ~(1 << colorIndex)
-        # but I don't want to deal with binary not on arbitrary sized ints
-        if self.containsColor(colorIndex):
-            self.mask -= 1 << colorIndex
-
-
-
 class GenericIslandConfig: ...
 
 @dataclass
@@ -320,6 +363,37 @@ class RailConfig(GenericIslandConfig):
 class DisableableTrainUnloadingLanesConfig(GenericIslandConfig):
     disabledLanes:list[int]
 
-class GlobalChunkCoordinate(utils.Pos): ...
+#endregion
 
-class IslandTileCoordinate(utils.Pos): ...
+
+
+#region states
+
+class SimulationSteps:
+
+    STEPS_PER_WORLD_UNIT = 2305195200000
+
+    def __init__(self,steps:int):
+        self.steps = steps
+
+    @classmethod
+    def fromWorldUnits(cls,worldUnits:int) -> typing.Self:
+        return cls(worldUnits*cls.STEPS_PER_WORLD_UNIT)
+
+    def toWorldUnits(self) -> float:
+        return self.steps / self.STEPS_PER_WORLD_UNIT
+
+@dataclass
+class BeltSlotState:
+    item:GenericBeltItem|None
+    progress:SimulationSteps|None
+
+class GenericSimulationState: ...
+
+@_serializationId("ConveyorState")
+@dataclass
+class ConveyorSimulationState(GenericSimulationState):
+    slot0:BeltSlotState
+    slot1:BeltSlotState
+
+#endregion
