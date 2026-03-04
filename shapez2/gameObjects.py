@@ -406,7 +406,44 @@ class SimulationSteps:
 @dataclass
 class BeltSlotState:
     item:GenericBeltItem|None
-    progress:SimulationSteps|None
+    progress:SimulationSteps
+
+@dataclass
+class BeltLaneState:
+    item:GenericBeltItem|None
+    progress:SimulationSteps
+
+@dataclass
+class FluidContainerState:
+    value:FluidUnit
+    fluid:GenericFluid|None
+
+class SimulationTicks:
+
+    TICKS_PER_SECOND = 9604980000
+
+    def __init__(self,value:int):
+        self.value = value
+
+    @classmethod
+    def fromSeconds(cls,seconds:int) -> typing.Self:
+        return cls(seconds*cls.TICKS_PER_SECOND)
+
+    def toSeconds(self) -> float:
+        return self.value / self.TICKS_PER_SECOND
+
+@dataclass
+class ShapeCollapseResultEntry:
+    shape:Shape
+    fallDownLayers:int
+    vanish:bool
+
+@dataclass
+class ShapeCollapseResult:
+    entries:list[ShapeCollapseResultEntry]
+    shape:Shape|None
+
+
 
 class GenericSimulationState: ...
 
@@ -415,5 +452,30 @@ class GenericSimulationState: ...
 class ConveyorSimulationState(GenericSimulationState):
     slot0:BeltSlotState
     slot1:BeltSlotState
+
+@_serializationId("CrystalGeneratorState")
+@dataclass
+class CrystalGeneratorSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+    containerState:FluidContainerState
+    currentProcessingPaint:GenericFluid|None
+    currentSourceShape:ShapeItem|None
+    currentCrystalOnlyShape:ShapeItem|None
+    fluidAmountDuringLastUpdate:FluidUnit
+    excessTicks:SimulationTicks
+    ticksSinceLastCrystallization:SimulationTicks
+    ticksSinceItemEntered:SimulationTicks
+
+@_serializationId("FullCutterState")
+@dataclass
+class FullCutterSimulationState:
+    inputLaneState:BeltLaneState
+    leftLaneState:BeltLaneState
+    rightLaneState:BeltLaneState
+    leftOutputLaneState:BeltLaneState
+    rightOutputLaneState:BeltLaneState
+    leftCollapseResult:ShapeCollapseResult|None
+    rightCollapseResult:ShapeCollapseResult|None
 
 #endregion

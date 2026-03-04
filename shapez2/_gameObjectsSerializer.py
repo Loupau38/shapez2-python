@@ -6,6 +6,7 @@ import enum
 from collections.abc import Callable
 import typing
 import inspect
+import types
 
 def checkpointHash(checkpointId:str) -> int:
     h = fixedint.UInt32(523423)
@@ -323,6 +324,41 @@ class GameObjectsSerializer:
         self.colorSchemes = possibleColorSchemes
         return self.colorSchemes[0].colorsByCode[colorCode]
 
+    def _processShapeCode(self,shapeCode:str|None) -> gameObjects.Shape:
+        if shapeCode is None:
+            raise InvalidSerializedData("Shape code can't be null")
+        valid, error, shapeConfigs, colorSchemes = shapeCodes.isShapeCodeValid(
+            shapeCode,self.shapesConfigs,self.colorSchemes,True
+        )
+        if not valid:
+            raise InvalidSerializedData(f"Invalid shape code : {error}")
+        self.shapesConfigs = shapeConfigs
+        self.colorSchemes = colorSchemes
+        return shapeCodes.parseShape(
+            shapeCode,
+            self.shapesConfigs[0],
+            self.colorSchemes[0]
+        )
+
+    def _autoDeserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
+        args = []
+        for argName,argType in inspect.get_annotations(into.__init__).items():
+            if argName == "return":
+                continue
+            if isinstance(argType,types.UnionType):
+                if (
+                    (len(argType.__args__) != 2)
+                    or (argType.__args__[1] != types.NoneType)
+                ):
+                    raise ValueError(
+                        f"Invalid union type for auto deserialization : {argType}"
+                    )
+                actualType = argType.__args__[0]
+            else:
+                actualType = argType
+            args.append(self.deserialize(reader,actualType))
+        return into(*args)
+
     def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
 
         # general game objects
@@ -394,27 +430,12 @@ class GameObjectsSerializer:
         if into == gameObjects.ShapeItem:
             if not reader.readBool():
                 return None
-            shapeCode = reader.readString()
-            if shapeCode is None:
-                raise InvalidSerializedData("Shape code can't be null")
-            valid, error, shapeConfigs, colorSchemes = shapeCodes.isShapeCodeValid(
-                shapeCode,self.shapesConfigs,self.colorSchemes,True
+            return gameObjects.ShapeItem(
+                self._processShapeCode(reader.readString())
             )
-            if not valid:
-                raise InvalidSerializedData(f"Invalid shape code : {error}")
-            self.shapesConfigs = shapeConfigs
-            self.colorSchemes = colorSchemes
-            return gameObjects.ShapeItem(shapeCodes.parseShape(
-                shapeCode,
-                self.shapesConfigs[0],
-                self.colorSchemes[0]
-            ))
 
         if into == gameObjects.FluidPackageItem:
-            return gameObjects.FluidPackageItem(
-                self.deserialize(reader,gameObjects.GenericFluid),
-                self.deserialize(reader,gameObjects.FluidUnit)
-            )
+            return self._autoDeserialize(reader,gameObjects.FluidPackageItem)
 
         if into == gameObjects.GenericFluid:
             fluidType = reader.readInt1()
@@ -463,19 +484,13 @@ class GameObjectsSerializer:
             return gameObjects.LabelConfig(reader.readString())
 
         if into == gameObjects.SignalProducerConfig:
-            return gameObjects.SignalProducerConfig(
-                self.deserialize(reader,gameObjects.GenericSignal)
-            )
+            return self._autoDeserialize(reader,gameObjects.SignalProducerConfig)
 
         if into == gameObjects.ItemProducerConfig:
-            return gameObjects.ItemProducerConfig(
-                self.deserialize(reader,gameObjects.GenericBeltItem)
-            )
+            return self._autoDeserialize(reader,gameObjects.ItemProducerConfig)
 
         if into == gameObjects.FluidProducerConfig:
-            return gameObjects.FluidProducerConfig(
-                self.deserialize(reader,gameObjects.GenericFluid)
-            )
+            return self._autoDeserialize(reader,gameObjects.FluidProducerConfig)
 
         if into == gameObjects.ButtonConfig:
             return gameObjects.ButtonConfig(reader.readBool())
@@ -489,9 +504,7 @@ class GameObjectsSerializer:
             )
 
         if into == gameObjects.GlobalSignalReceiverConfig:
-            return gameObjects.GlobalSignalReceiverConfig(
-                self.deserialize(reader,gameObjects.SignalChannelId)
-            )
+            return self._autoDeserialize(reader,gameObjects.GlobalSignalReceiverConfig)
 
         # specific cases
 
@@ -520,16 +533,55 @@ class GameObjectsSerializer:
                     self.deserialize(reader,gameObjects.GenericBeltItem),
                     self.deserialize(reader,gameObjects.SimulationSteps)
                 )
-            return gameObjects.BeltSlotState(None,None)
+            return gameObjects.BeltSlotState(None,gameObjects.SimulationSteps(0))
+
+        if into == gameObjects.BeltLaneState:
+            if reader.readBool():
+                return gameObjects.BeltLaneState(
+                    self.deserialize(reader,gameObjects.GenericBeltItem),
+                    self.deserialize(reader,gameObjects.SimulationSteps)
+                )
+            return gameObjects.BeltLaneState(None,gameObjects.SimulationSteps(0))
+
+        if into == gameObjects.FluidContainerState:
+            return self._autoDeserialize(reader,gameObjects.FluidContainerState)
+
+        if into == gameObjects.SimulationTicks:
+            return gameObjects.SimulationTicks(reader.readLong())
+
+        if into == gameObjects.ShapeCollapseResult:
+            count = reader.readInt1()
+            if count == 0:
+                return None
+            if reader.readBool():
+                resultShape = self._processShapeCode(reader.readString())
+            else:
+                resultShape = None
+            return gameObjects.ShapeCollapseResult(
+                [
+                    gameObjects.ShapeCollapseResultEntry(
+                        self._processShapeCode(reader.readString()),
+                        reader.readInt1(),
+                        reader.readBool()
+                    )
+                    for _ in range(count)
+                ],
+                resultShape
+            )
+
+
 
         if into == gameObjects.GenericSimulationState:
             return self.simulationStateSerializer.deserialize(reader)
 
         if into == gameObjects.ConveyorSimulationState:
-            return gameObjects.ConveyorSimulationState(
-                self.deserialize(reader,gameObjects.BeltSlotState),
-                self.deserialize(reader,gameObjects.BeltSlotState)
-            )
+            return self._autoDeserialize(reader,gameObjects.ConveyorSimulationState)
+
+        if into == gameObjects.CrystalGeneratorSimulationState:
+            return self._autoDeserialize(reader,gameObjects.CrystalGeneratorSimulationState)
+
+        if into == gameObjects.FullCutterSimulationState:
+            return self._autoDeserialize(reader,gameObjects.FullCutterSimulationState)
 
         raise ValueError(f"Unknown type for deserialization : {into}")
 
@@ -745,6 +797,43 @@ class GameObjectsSerializer:
                 self.serialize(writer,obj.progress)
 
         @f
+        def _(obj:gameObjects.BeltLaneState):
+            if obj.item is None:
+                writer.writeBool(False)
+            else:
+                writer.writeBool(True)
+                self.serialize(writer,obj.item,gameObjects.GenericBeltItem)
+                self.serialize(writer,obj.progress)
+
+        @f
+        def _(obj:gameObjects.FluidContainerState):
+            self.serialize(writer,obj.value)
+            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
+
+        @f
+        def _(obj:gameObjects.SimulationTicks):
+            writer.writeLong(obj.value)
+
+        @f
+        def _(obj:gameObjects.ShapeCollapseResult):
+            if (obj is None) or (len(obj.entries) == 0):
+                writer.writeInt1(0)
+                return
+            assert len(obj.entries) < 255 # ingame bug, should be '<='
+            writer.writeInt1(len(obj.entries))
+            if obj.shape is None:
+                writer.writeBool(False)
+            else:
+                writer.writeBool(True)
+                writer.writeString(obj.shape.toShapeCode())
+            for entry in obj.entries:
+                writer.writeString(entry.shape.toShapeCode())
+                writer.writeInt1(entry.fallDownLayers)
+                writer.writeBool(entry.vanish)
+
+
+
+        @f
         def _(obj:gameObjects.GenericSimulationState):
             self.simulationStateSerializer.serialize(writer,obj)
 
@@ -752,6 +841,29 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.ConveyorSimulationState):
             self.serialize(writer,obj.slot0)
             self.serialize(writer,obj.slot1)
+
+        @f
+        def _(obj:gameObjects.CrystalGeneratorSimulationState):
+            self.serialize(writer,obj.inputLaneState)
+            self.serialize(writer,obj.outputLaneState)
+            self.serialize(writer,obj.containerState)
+            self.serialize(writer,obj.currentProcessingPaint,gameObjects.GenericFluid)
+            self.serialize(writer,obj.currentSourceShape,gameObjects.ShapeItem)
+            self.serialize(writer,obj.currentCrystalOnlyShape,gameObjects.ShapeItem)
+            self.serialize(writer,obj.fluidAmountDuringLastUpdate)
+            self.serialize(writer,obj.excessTicks)
+            self.serialize(writer,obj.ticksSinceLastCrystallization)
+            self.serialize(writer,obj.ticksSinceItemEntered)
+
+        @f
+        def _(obj:gameObjects.FullCutterSimulationState):
+            self.serialize(writer,obj.inputLaneState)
+            self.serialize(writer,obj.leftLaneState)
+            self.serialize(writer,obj.rightLaneState)
+            self.serialize(writer,obj.leftOutputLaneState)
+            self.serialize(writer,obj.rightOutputLaneState)
+            self.serialize(writer,obj.leftCollapseResult,gameObjects.ShapeCollapseResult)
+            self.serialize(writer,obj.rightCollapseResult,gameObjects.ShapeCollapseResult)
 
         if typeMatch is None:
             raise ValueError(f"Unknown type for serialization : {objType}")
