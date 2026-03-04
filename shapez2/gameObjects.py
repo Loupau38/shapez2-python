@@ -361,7 +361,27 @@ class RailConfig(GenericIslandConfig):
 
 @dataclass
 class DisableableTrainUnloadingLanesConfig(GenericIslandConfig):
-    disabledLanes:list[int]
+    mask:int
+
+    @classmethod
+    def none(cls) -> typing.Self:
+        return cls(0)
+
+    @classmethod
+    def all(cls,numLayers:int) -> typing.Self:
+        return cls((1 << numLayers)-1)
+
+    def laneDisabled(self,layer:int) -> bool:
+        return (self.mask & (1 << layer)) != 0
+
+    def disableLane(self,layer:int) -> None:
+        self.mask |= 1 << layer
+
+    def enableLane(self,layer:int) -> None:
+        # classic way would be self.mask &= ~(1 << layer)
+        # but I don't want to deal with binary not on arbitrary sized ints
+        if self.laneDisabled(layer):
+            self.mask -= 1 << layer
 
 #endregion
 

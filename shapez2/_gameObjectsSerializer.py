@@ -455,9 +455,7 @@ class GameObjectsSerializer:
             ])
 
         if into == gameObjects.DisableableTrainUnloadingLanesConfig:
-            return gameObjects.DisableableTrainUnloadingLanesConfig([
-                reader.readInt() for _ in range(reader.readInt())
-            ])
+            return gameObjects.DisableableTrainUnloadingLanesConfig(reader.readInt())
 
         # building config
 
@@ -689,9 +687,7 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.DisableableTrainUnloadingLanesConfig):
-            writer.writeInt(len(obj.disabledLanes))
-            for lane in obj.disabledLanes:
-                writer.writeInt(lane)
+            writer.writeInt(obj.mask)
 
         # building config
 
