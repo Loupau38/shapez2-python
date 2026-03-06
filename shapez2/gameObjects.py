@@ -503,12 +503,12 @@ class CrystalGeneratorSimulationState(GenericSimulationState):
 
 @_serializationId("FluidStorageState")
 @dataclass
-class FluidStorageSimulationState:
+class FluidStorageSimulationState(GenericSimulationState):
     containerState:FluidContainerState
 
 @_serializationId("FullCutterState")
 @dataclass
-class FullCutterSimulationState:
+class FullCutterSimulationState(GenericSimulationState):
     inputLaneState:BeltLaneState
     leftLaneState:BeltLaneState
     rightLaneState:BeltLaneState
@@ -519,7 +519,7 @@ class FullCutterSimulationState:
 
 @_serializationId("HalfCutterState")
 @dataclass
-class HalfCutterSimulationState:
+class HalfCutterSimulationState(GenericSimulationState):
     inputLaneState:BeltLaneState
     processingLaneState:BeltLaneState
     outputLaneState:BeltLaneState
@@ -529,7 +529,7 @@ class HalfCutterSimulationState:
 
 @_serializationId("HalvesSwapperState")
 @dataclass
-class HalvesSwapperSimulationState:
+class HalvesSwapperSimulationState(GenericSimulationState):
     lowerInputLaneState:BeltLaneState
     lowerProcessingLaneState:BeltLaneState
     lowerOutputLaneState:BeltLaneState
@@ -545,19 +545,19 @@ class HalvesSwapperSimulationState:
 
 @_serializationId("ItemProducerState")
 @dataclass
-class ItemProducerSimulationState:
+class ItemProducerSimulationState(GenericSimulationState):
     outputLaneState:BeltLaneState
 
 @_serializationId("Lift1LayerState")
 @dataclass
-class Lift1LayerSimulationState:
+class Lift1LayerSimulationState(GenericSimulationState):
     inputLaneState:BeltLaneState
     verticalLaneState:BeltLaneState
     outputLaneState:BeltLaneState
 
 @_serializationId("Lift2LayerState")
 @dataclass
-class Lift2LayerSimulationState:
+class Lift2LayerSimulationState(GenericSimulationState):
     inputLaneState:BeltLaneState
     verticalLane0State:BeltLaneState
     verticalLane1State:BeltLaneState
@@ -565,25 +565,25 @@ class Lift2LayerSimulationState:
 
 @_serializationId("LogicGate2In1OutState")
 @dataclass
-class LogicGate2In1OutSimulationState:
+class LogicGate2In1OutSimulationState(GenericSimulationState):
     input0ConductorState:SignalConductorInputState
     Input1ConductorState:SignalConductorInputState
 
 @_serializationId("LogicGateCompareState")
 @dataclass
-class LogicGateCompareSimulationState:
+class LogicGateCompareSimulationState(GenericSimulationState):
     input0ConductorState:SignalConductorInputState
     input1ConductorState:SignalConductorInputState
 
 @_serializationId("LogicGateIfState")
 @dataclass
-class LogicGateIfSimulationState:
+class LogicGateIfSimulationState(GenericSimulationState):
     inputConductorState:SignalConductorInputState
     gateConductorState:SignalConductorInputState
 
 @_serializationId("LogicGateNotState")
 @dataclass
-class LogicGateNotSimulationState:
+class LogicGateNotSimulationState(GenericSimulationState):
     inputConductorState:SignalConductorInputState
 
 #endregion
