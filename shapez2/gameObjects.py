@@ -443,6 +443,40 @@ class ShapeCollapseResult:
     entries:list[ShapeCollapseResultEntry]
     shape:Shape|None
 
+class SignalTicks:
+
+    TICKS_PER_SECOND = 12
+
+    def __init__(self,value:int):
+        self.value = value
+
+    @classmethod
+    def fromSeconds(cls,seconds:int) -> typing.Self:
+        return cls(seconds*cls.TICKS_PER_SECOND)
+
+    def toSeconds(self) -> float:
+        return self.value / self.TICKS_PER_SECOND
+
+class SignalBuffer:
+
+    ARRAY_SIZE = 4
+
+    def __init__(
+        self,
+        values:list[GenericSignal],
+        lastStartTicks:SimulationTicks,
+        lastSignalTick:SignalTicks,
+        wasPushedThisStartTick:bool
+    ):
+        self.values = values
+        self.lastStartTicks = lastStartTicks
+        self.lastSignalTick = lastSignalTick
+        self.wasPushedThisStartTick = wasPushedThisStartTick
+
+@dataclass
+class SignalConductorInputState:
+    inputConductor:SignalBuffer
+
 
 
 class GenericSimulationState: ...
@@ -467,6 +501,11 @@ class CrystalGeneratorSimulationState(GenericSimulationState):
     ticksSinceLastCrystallization:SimulationTicks
     ticksSinceItemEntered:SimulationTicks
 
+@_serializationId("FluidStorageState")
+@dataclass
+class FluidStorageSimulationState:
+    containerState:FluidContainerState
+
 @_serializationId("FullCutterState")
 @dataclass
 class FullCutterSimulationState:
@@ -477,5 +516,74 @@ class FullCutterSimulationState:
     rightOutputLaneState:BeltLaneState
     leftCollapseResult:ShapeCollapseResult|None
     rightCollapseResult:ShapeCollapseResult|None
+
+@_serializationId("HalfCutterState")
+@dataclass
+class HalfCutterSimulationState:
+    inputLaneState:BeltLaneState
+    processingLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+    currentWaste:ShapeCollapseResult|None
+    currentCollapseResult:ShapeCollapseResult|None
+    producingEmptyShape:bool
+
+@_serializationId("HalvesSwapperState")
+@dataclass
+class HalvesSwapperSimulationState:
+    lowerInputLaneState:BeltLaneState
+    lowerProcessingLaneState:BeltLaneState
+    lowerOutputLaneState:BeltLaneState
+    upperInputLaneState:BeltLaneState
+    upperProcessingLaneState:BeltLaneState
+    upperOutputLaneState:BeltLaneState
+    lowerLeftCollapseResult:ShapeCollapseResult|None
+    lowerRightCollapseResult:ShapeCollapseResult|None
+    upperLeftCollapseResult:ShapeCollapseResult|None
+    upperRightCollapseResult:ShapeCollapseResult|None
+    lowerFinalResult:ShapeItem|None
+    upperFinalResult:ShapeItem|None
+
+@_serializationId("ItemProducerState")
+@dataclass
+class ItemProducerSimulationState:
+    outputLaneState:BeltLaneState
+
+@_serializationId("Lift1LayerState")
+@dataclass
+class Lift1LayerSimulationState:
+    inputLaneState:BeltLaneState
+    verticalLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+
+@_serializationId("Lift2LayerState")
+@dataclass
+class Lift2LayerSimulationState:
+    inputLaneState:BeltLaneState
+    verticalLane0State:BeltLaneState
+    verticalLane1State:BeltLaneState
+    outputLaneState:BeltLaneState
+
+@_serializationId("LogicGate2In1OutState")
+@dataclass
+class LogicGate2In1OutSimulationState:
+    input0ConductorState:SignalConductorInputState
+    Input1ConductorState:SignalConductorInputState
+
+@_serializationId("LogicGateCompareState")
+@dataclass
+class LogicGateCompareSimulationState:
+    input0ConductorState:SignalConductorInputState
+    input1ConductorState:SignalConductorInputState
+
+@_serializationId("LogicGateIfState")
+@dataclass
+class LogicGateIfSimulationState:
+    inputConductorState:SignalConductorInputState
+    gateConductorState:SignalConductorInputState
+
+@_serializationId("LogicGateNotState")
+@dataclass
+class LogicGateNotSimulationState:
+    inputConductorState:SignalConductorInputState
 
 #endregion

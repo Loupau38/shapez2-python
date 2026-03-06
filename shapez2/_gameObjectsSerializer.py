@@ -342,21 +342,23 @@ class GameObjectsSerializer:
 
     def _autoDeserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
         args = []
-        for argName,argType in inspect.get_annotations(into.__init__).items():
-            if argName == "return":
-                continue
-            if isinstance(argType,types.UnionType):
+        for attrType in inspect.get_annotations(into).values():
+            if isinstance(attrType,types.UnionType):
                 if (
-                    (len(argType.__args__) != 2)
-                    or (argType.__args__[1] != types.NoneType)
+                    (len(attrType.__args__) != 2)
+                    or (attrType.__args__[1] != types.NoneType)
                 ):
                     raise ValueError(
-                        f"Invalid union type for auto deserialization : {argType}"
+                        f"Invalid union type for auto deserialization : {attrType}"
                     )
-                actualType = argType.__args__[0]
+                actualType = attrType.__args__[0]
             else:
-                actualType = argType
-            args.append(self.deserialize(reader,actualType))
+                actualType = attrType
+            if actualType == bool:
+                attrValue = reader.readBool()
+            else:
+                attrValue = self.deserialize(reader,actualType)
+            args.append(attrValue)
         return into(*args)
 
     def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
@@ -569,21 +571,74 @@ class GameObjectsSerializer:
                 resultShape
             )
 
+        if into == gameObjects.SignalTicks:
+            return gameObjects.SignalTicks(reader.readLong())
+
+        if into == gameObjects.SignalBuffer:
+            arrayLen = reader.readInt()
+            readCount = min(arrayLen,gameObjects.SignalBuffer.ARRAY_SIZE)
+            values = [
+                self.deserialize(reader,gameObjects.GenericSignal)
+                for _ in range(readCount)
+            ]
+            [
+                self.deserialize(reader,gameObjects.GenericSignal)
+                for _ in range(max(arrayLen-readCount,0))
+            ]
+            return gameObjects.SignalBuffer(
+                values,
+                self.deserialize(reader,gameObjects.SimulationTicks),
+                self.deserialize(reader,gameObjects.SignalTicks),
+                reader.readBool()
+            )
+
+        if into == gameObjects.SignalConductorInputState:
+            self._autoDeserialize(reader,gameObjects.SignalConductorInputState)
+
 
 
         if into == gameObjects.GenericSimulationState:
             return self.simulationStateSerializer.deserialize(reader)
 
-        if into == gameObjects.ConveyorSimulationState:
-            return self._autoDeserialize(reader,gameObjects.ConveyorSimulationState)
-
-        if into == gameObjects.CrystalGeneratorSimulationState:
-            return self._autoDeserialize(reader,gameObjects.CrystalGeneratorSimulationState)
-
-        if into == gameObjects.FullCutterSimulationState:
-            return self._autoDeserialize(reader,gameObjects.FullCutterSimulationState)
+        for cls in [
+            gameObjects.ConveyorSimulationState,
+            gameObjects.CrystalGeneratorSimulationState,
+            gameObjects.FluidStorageSimulationState,
+            gameObjects.FullCutterSimulationState,
+            gameObjects.HalfCutterSimulationState,
+            gameObjects.HalvesSwapperSimulationState,
+            gameObjects.ItemProducerSimulationState,
+            gameObjects.Lift1LayerSimulationState,
+            gameObjects.Lift2LayerSimulationState,
+            gameObjects.LogicGate2In1OutSimulationState,
+            gameObjects.LogicGateCompareSimulationState,
+            gameObjects.LogicGateIfSimulationState,
+            gameObjects.LogicGateNotSimulationState
+        ]:
+            if into == cls:
+                return self._autoDeserialize(reader,cls)
 
         raise ValueError(f"Unknown type for deserialization : {into}")
+
+    def _autoSerialize(self,writer:BinaryStreamWriter,obj:typing.Any) -> None:
+        for attrName,attrType in inspect.get_annotations(type(obj)).items():
+            kwargs = {}
+            if isinstance(attrType,types.UnionType):
+                if (
+                    (len(attrType.__args__) != 2)
+                    or (attrType.__args__[1] != types.NoneType)
+                ):
+                    raise ValueError(
+                        f"Invalid union type for auto serialization : {attrType}"
+                    )
+                kwargs["objTypeOverride"] = attrType.__args__[0]
+            elif attrType.__name__.startswith("Generic"):
+                kwargs["objTypeOverride"] = attrType
+            attrValue = getattr(obj,attrName)
+            if attrType == bool:
+                writer.writeBool(attrValue)
+            else:
+                self.serialize(writer,attrValue,**kwargs)
 
     def serialize(self,writer:BinaryStreamWriter,obj:typing.Any,objTypeOverride:type|None=None) -> None:
         """Specify a type override when serializing a generic or if 'obj' can be None !"""
@@ -596,9 +651,12 @@ class GameObjectsSerializer:
             objType = objTypeOverride
 
         typeMatch = None
-        def f(func:Callable[[typing.Any],None]) -> None:
+        def f(func:Callable[[typing.Any],None],funcTypeOverride:type|None=None) -> None:
             nonlocal typeMatch
-            funcType = inspect.get_annotations(func)["obj"]
+            if funcTypeOverride is None:
+                funcType = inspect.get_annotations(func)["obj"]
+            else:
+                funcType = funcTypeOverride
             if objType == funcType:
                 if typeMatch is not None:
                     raise ValueError(f"Attempt to serialize twice ('{typeMatch}' and '{funcType}')")
@@ -695,8 +753,7 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.FluidPackageItem):
-            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
-            self.serialize(writer,obj.size)
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.GenericFluid):
@@ -749,15 +806,15 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.SignalProducerConfig):
-            self.serialize(writer,obj.signal,gameObjects.GenericSignal)
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.ItemProducerConfig):
-            self.serialize(writer,obj.beltItem,gameObjects.GenericBeltItem)
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.FluidProducerConfig):
-            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.ButtonConfig):
@@ -769,7 +826,7 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.GlobalSignalReceiverConfig):
-            self.serialize(writer,obj.channelId)
+            self._autoSerialize(writer,obj)
 
         # specifc cases
 
@@ -807,8 +864,7 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.FluidContainerState):
-            self.serialize(writer,obj.value)
-            self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.SimulationTicks):
@@ -831,39 +887,47 @@ class GameObjectsSerializer:
                 writer.writeInt1(entry.fallDownLayers)
                 writer.writeBool(entry.vanish)
 
+        @f
+        def _(obj:gameObjects.SignalTicks):
+            writer.writeLong(obj.value)
+
+        @f
+        def _(obj:gameObjects.SignalBuffer):
+            writer.writeInt(gameObjects.SignalBuffer.ARRAY_SIZE)
+            for i in range(gameObjects.SignalBuffer.ARRAY_SIZE):
+                self.serialize(writer,obj.values[i],gameObjects.GenericSignal)
+            self.serialize(writer,obj.lastStartTicks)
+            self.serialize(writer,obj.lastSignalTick)
+            writer.writeBool(obj.wasPushedThisStartTick)
+
+        @f
+        def _(obj:gameObjects.SignalConductorInputState):
+            self._autoSerialize(writer,obj)
+
 
 
         @f
         def _(obj:gameObjects.GenericSimulationState):
             self.simulationStateSerializer.serialize(writer,obj)
 
-        @f
-        def _(obj:gameObjects.ConveyorSimulationState):
-            self.serialize(writer,obj.slot0)
-            self.serialize(writer,obj.slot1)
-
-        @f
-        def _(obj:gameObjects.CrystalGeneratorSimulationState):
-            self.serialize(writer,obj.inputLaneState)
-            self.serialize(writer,obj.outputLaneState)
-            self.serialize(writer,obj.containerState)
-            self.serialize(writer,obj.currentProcessingPaint,gameObjects.GenericFluid)
-            self.serialize(writer,obj.currentSourceShape,gameObjects.ShapeItem)
-            self.serialize(writer,obj.currentCrystalOnlyShape,gameObjects.ShapeItem)
-            self.serialize(writer,obj.fluidAmountDuringLastUpdate)
-            self.serialize(writer,obj.excessTicks)
-            self.serialize(writer,obj.ticksSinceLastCrystallization)
-            self.serialize(writer,obj.ticksSinceItemEntered)
-
-        @f
-        def _(obj:gameObjects.FullCutterSimulationState):
-            self.serialize(writer,obj.inputLaneState)
-            self.serialize(writer,obj.leftLaneState)
-            self.serialize(writer,obj.rightLaneState)
-            self.serialize(writer,obj.leftOutputLaneState)
-            self.serialize(writer,obj.rightOutputLaneState)
-            self.serialize(writer,obj.leftCollapseResult,gameObjects.ShapeCollapseResult)
-            self.serialize(writer,obj.rightCollapseResult,gameObjects.ShapeCollapseResult)
+        for cls in [
+            gameObjects.ConveyorSimulationState,
+            gameObjects.CrystalGeneratorSimulationState,
+            gameObjects.FluidStorageSimulationState,
+            gameObjects.FullCutterSimulationState,
+            gameObjects.HalfCutterSimulationState,
+            gameObjects.HalvesSwapperSimulationState,
+            gameObjects.ItemProducerSimulationState,
+            gameObjects.Lift1LayerSimulationState,
+            gameObjects.Lift2LayerSimulationState,
+            gameObjects.LogicGate2In1OutSimulationState,
+            gameObjects.LogicGateCompareSimulationState,
+            gameObjects.LogicGateIfSimulationState,
+            gameObjects.LogicGateNotSimulationState
+        ]:
+            def func(obj):
+                self._autoSerialize(writer,obj)
+            f(func,cls)
 
         if typeMatch is None:
             raise ValueError(f"Unknown type for serialization : {objType}")
