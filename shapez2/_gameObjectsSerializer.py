@@ -601,8 +601,12 @@ class GameObjectsSerializer:
             return self.simulationStateSerializer.deserialize(reader)
 
         for cls in [
+            gameObjects.BeltReaderSimulationState,
+            gameObjects.ControlledSignalReceiverState,
+            gameObjects.ControlledSignalTransmitterState,
             gameObjects.ConveyorSimulationState,
             gameObjects.CrystalGeneratorSimulationState,
+            gameObjects.DisplaySimulationState,
             gameObjects.FluidStorageSimulationState,
             gameObjects.FullCutterSimulationState,
             gameObjects.HalfCutterSimulationState,
@@ -613,10 +617,73 @@ class GameObjectsSerializer:
             gameObjects.LogicGate2In1OutSimulationState,
             gameObjects.LogicGateCompareSimulationState,
             gameObjects.LogicGateIfSimulationState,
-            gameObjects.LogicGateNotSimulationState
+            gameObjects.LogicGateNotSimulationState,
+            gameObjects.PainterSimulationState,
+            gameObjects.PinPusherSimulationState,
+            gameObjects.PipeGateSimulationState,
+            gameObjects.RotatorSimulationState,
+            gameObjects.StackerSimulationState,
+            gameObjects.Virtual1InSimulationState,
+            gameObjects.Virtual2InSimulationState
         ]:
             if into == cls:
                 return self._autoDeserialize(reader,cls)
+
+        if into == gameObjects.BeltFilterSimulationState:
+            base = self.deserialize(reader,gameObjects.SplitterSimulationState)
+            return gameObjects.BeltFilterSimulationState(
+                base.inputLaneState,
+                base.outputLaneStates,
+                self.deserialize(reader,gameObjects.SignalConductorInputState)
+            )
+
+        if into == gameObjects.ConverterSimulationState:
+            raise InvalidSerializedData("Can't deserialize ConverterSimulationState (maybe)")
+
+        if into == gameObjects.MergerSimulationState:
+            return gameObjects.MergerSimulationState(
+                [
+                    self.deserialize(reader,gameObjects.BeltLaneState)
+                    for _ in range(reader.readInt1())
+                ],
+                self.deserialize(reader,gameObjects.BeltLaneState),
+                reader.readShort(),
+                reader.readInt1()
+            )
+
+        if into == gameObjects.MixerSimulationState:
+            i0 = self.deserialize(reader,gameObjects.FluidContainerState)
+            i1 = self.deserialize(reader,gameObjects.FluidContainerState)
+            c0 = self.deserialize(reader,gameObjects.FluidContainerState)
+            c1 = self.deserialize(reader,gameObjects.FluidContainerState)
+            out = self.deserialize(reader,gameObjects.FluidContainerState)
+            mixState = reader.readInt1()
+            if mixState not in gameObjects.MixerSimulationMixingState:
+                raise InvalidSerializedData(f"Invalid value for mixer mixing state : {mixState}")
+            return gameObjects.MixerSimulationState(
+                i0,i1,c0,c1,out,
+                gameObjects.MixerSimulationMixingState(mixState),
+                self.deserialize(reader,gameObjects.SimulationTicks),
+                self.deserialize(reader,gameObjects.GenericFluid)
+            )
+
+        if into == gameObjects.PrioritySplitterSimulationState:
+            base = self.deserialize(reader,gameObjects.SplitterSimulationState)
+            return gameObjects.PrioritySplitterSimulationState(
+                base.inputLaneState,
+                base.outputLaneStates,
+                reader.readInt1()
+            )
+
+        if into == gameObjects.SplitterSimulationState:
+            numOutputs = reader.readInt1()
+            return gameObjects.SplitterSimulationState(
+                self.deserialize(reader,gameObjects.BeltLaneState),
+                [
+                    self.deserialize(reader,gameObjects.BeltLaneState)
+                    for _ in range(numOutputs)
+                ]
+            )
 
         raise ValueError(f"Unknown type for deserialization : {into}")
 
@@ -911,8 +978,12 @@ class GameObjectsSerializer:
             self.simulationStateSerializer.serialize(writer,obj)
 
         for cls in [
+            gameObjects.BeltReaderSimulationState,
+            gameObjects.ControlledSignalReceiverState,
+            gameObjects.ControlledSignalTransmitterState,
             gameObjects.ConveyorSimulationState,
             gameObjects.CrystalGeneratorSimulationState,
+            gameObjects.DisplaySimulationState,
             gameObjects.FluidStorageSimulationState,
             gameObjects.FullCutterSimulationState,
             gameObjects.HalfCutterSimulationState,
@@ -923,11 +994,73 @@ class GameObjectsSerializer:
             gameObjects.LogicGate2In1OutSimulationState,
             gameObjects.LogicGateCompareSimulationState,
             gameObjects.LogicGateIfSimulationState,
-            gameObjects.LogicGateNotSimulationState
+            gameObjects.LogicGateNotSimulationState,
+            gameObjects.PainterSimulationState,
+            gameObjects.PinPusherSimulationState,
+            gameObjects.PipeGateSimulationState,
+            gameObjects.RotatorSimulationState,
+            gameObjects.StackerSimulationState,
+            gameObjects.Virtual1InSimulationState,
+            gameObjects.Virtual2InSimulationState
         ]:
             def func(obj):
                 self._autoSerialize(writer,obj)
             f(func,cls)
+
+        @f
+        def _(obj:gameObjects.BeltFilterSimulationState):
+            self.serialize(writer,gameObjects.SplitterSimulationState(
+                obj.inputLaneState,
+                obj.outputLaneStates
+            ))
+            self.serialize(writer,obj.inputConductorState)
+
+        @f
+        def _(obj:gameObjects.ConverterSimulationState):
+            writer.writeInt1(len(obj.processingReceiverStates))
+            writer.writeInt1(len(obj.outputLaneStates))
+            for lane in (
+                obj.inputLaneStates
+                + obj.processingReceiverStates
+                + obj.processingLaneStates
+                + obj.outputLaneStates
+            ):
+                self.serialize(writer,lane)
+
+        @f
+        def _(obj:gameObjects.MergerSimulationState):
+            writer.writeInt1(len(obj.inputLaneStates))
+            for lane in obj.inputLaneStates:
+                self.serialize(writer,lane)
+            self.serialize(writer,obj.outputLaneState)
+            writer.writeShort(obj.currentInputIndex)
+            writer.writeInt1(obj.preferredInputIndex)
+
+        @f
+        def _(obj:gameObjects.MixerSimulationState):
+            self.serialize(writer,obj.input0ContainerState)
+            self.serialize(writer,obj.input1ContainerState)
+            self.serialize(writer,obj.chamber0ContainerState)
+            self.serialize(writer,obj.chamber1ContainerState)
+            self.serialize(writer,obj.outputContainerState)
+            writer.writeInt1(obj.mixingState.value)
+            self.serialize(writer,obj.mixingProgress)
+            self.serialize(writer,obj.mixingResult,gameObjects.GenericFluid)
+
+        @f
+        def _(obj:gameObjects.PrioritySplitterSimulationState):
+            self.serialize(writer,gameObjects.SplitterSimulationState(
+                obj.inputLaneState,
+                obj.outputLaneStates
+            ))
+            writer.writeInt1(obj.prioritizedIndex)
+
+        @f
+        def _(obj:gameObjects.SplitterSimulationState):
+            writer.writeInt1(len(obj.outputLaneStates))
+            self.serialize(writer,obj.inputLaneState)
+            for lane in obj.outputLaneStates:
+                self.serialize(writer,lane)
 
         if typeMatch is None:
             raise ValueError(f"Unknown type for serialization : {objType}")

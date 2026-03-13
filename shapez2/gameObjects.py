@@ -477,9 +477,45 @@ class SignalBuffer:
 class SignalConductorInputState:
     inputConductor:SignalBuffer
 
+class MixerSimulationMixingState(enum.Enum):
+    fillingChambers = 0
+    mixing = 1
+    draining = 2
+
 
 
 class GenericSimulationState: ...
+
+@_serializationId("BeltFilterState")
+@dataclass
+class BeltFilterSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneStates:list[BeltLaneState]
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("BeltReaderState")
+@dataclass
+class BeltReaderSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+
+@_serializationId("ControlledSignalReceiverState")
+@dataclass
+class ControlledSignalReceiverState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("ControlledSignalTransmitterState")
+@dataclass
+class ControlledSignalTransmitterState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("ConverterState")
+@dataclass
+class ConverterSimulationState(GenericSimulationState):
+    inputLaneStates:list[BeltLaneState]
+    processingReceiverStates:list[BeltLaneState]
+    processingLaneStates:list[BeltLaneState]
+    outputLaneStates:list[BeltLaneState]
 
 @_serializationId("ConveyorState")
 @dataclass
@@ -500,6 +536,11 @@ class CrystalGeneratorSimulationState(GenericSimulationState):
     excessTicks:SimulationTicks
     ticksSinceLastCrystallization:SimulationTicks
     ticksSinceItemEntered:SimulationTicks
+
+@_serializationId("DisplayState")
+@dataclass
+class DisplaySimulationState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
 
 @_serializationId("FluidStorageState")
 @dataclass
@@ -585,5 +626,97 @@ class LogicGateIfSimulationState(GenericSimulationState):
 @dataclass
 class LogicGateNotSimulationState(GenericSimulationState):
     inputConductorState:SignalConductorInputState
+
+@_serializationId("MergerState")
+@dataclass
+class MergerSimulationState(GenericSimulationState):
+    inputLaneStates:list[BeltLaneState]
+    outputLaneState:BeltLaneState
+    currentInputIndex:int
+    preferredInputIndex:int
+
+@_serializationId("MixerState")
+@dataclass
+class MixerSimulationState(GenericSimulationState):
+    input0ContainerState:FluidContainerState
+    input1ContainerState:FluidContainerState
+    chamber0ContainerState:FluidContainerState
+    chamber1ContainerState:FluidContainerState
+    outputContainerState:FluidContainerState
+    mixingState:MixerSimulationMixingState
+    mixingProgress:SimulationTicks
+    mixingResult:GenericFluid|None
+
+@_serializationId("PainterState")
+@dataclass
+class PainterSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+    containerState:FluidContainerState
+    currentProcessingPaint:GenericFluid|None
+    fluidAmountDuringLastUpdate:FluidUnit
+    excessTicks:SimulationTicks
+    ticksSinceLastPaint:SimulationTicks
+    ticksSinceItemEntered:SimulationTicks
+
+@_serializationId("PinPusherState")
+@dataclass
+class PinPusherSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    processingLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+    currentWaste:ShapeItem|None
+    currentResult:ShapeCollapseResult|None
+
+@_serializationId("PipeGateState")
+@dataclass
+class PipeGateSimulationState(GenericSimulationState):
+    containerState:FluidContainerState
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("RotatorState")
+@dataclass
+class RotatorSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    processingLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+
+@_serializationId("PrioritySplitterState")
+@dataclass
+class PrioritySplitterSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneStates:list[BeltLaneState]
+    prioritizedIndex:int
+
+@_serializationId("SpaceConverterState")
+@dataclass
+class SpaceConverterSimulationState(GenericSimulationState):
+    pass # todo
+
+@_serializationId("SplitterState")
+@dataclass
+class SplitterSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    outputLaneStates:list[BeltLaneState]
+
+@_serializationId("StackerState")
+@dataclass
+class StackerSimulationState(GenericSimulationState):
+    lowerInputLaneState:BeltLaneState
+    upperInputLaneState:BeltLaneState
+    processingLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+    currentCollapseResult:ShapeCollapseResult|None
+
+@_serializationId("Virtual1InSimulationState")
+@dataclass
+class Virtual1InSimulationState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("Virtual2InSimulationState")
+@dataclass
+class Virtual2InSimulationState(GenericSimulationState):
+    input0ConductorState:SignalConductorInputState
+    input1ConductorState:SignalConductorInputState
 
 #endregion
