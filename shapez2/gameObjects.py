@@ -482,6 +482,48 @@ class MixerSimulationMixingState(enum.Enum):
     mixing = 1
     draining = 2
 
+@dataclass
+class ItemOnBelt:
+    item:GenericBeltItem # not None
+    nextItemDistance:SimulationSteps
+
+@dataclass
+class FastBeltPathLaneState:
+    itemCapacity:int
+    compressedItemsAfterFirst:int
+    firstItemDistance:SimulationSteps
+    items:list[ItemOnBelt]
+
+class BundleState[T]:
+
+    ENTRIES_PER_BUNDLE = 12
+
+    def __init__(self,entries:list[T]) -> None:
+        self.entries = entries
+
+class PathMergerSimulationState:
+
+    NUM_ITEMS_PER_LANE = 4
+
+    def __init__(
+        self,
+        inputSegmentSlotStates:list[list[BeltLaneState]],
+        priorityLaneIndex:int,
+        preferredInputIndex:int
+    ) -> None:
+        self.inputSegmentSlotStates = inputSegmentSlotStates
+        self.priorityLaneIndex = priorityLaneIndex
+        self.preferredInputIndex = preferredInputIndex
+
+@dataclass
+class BeltPathLaneState:
+    slots:list[BeltSlotState]
+
+@dataclass
+class PathSplitterSimulationState:
+    outputLaneStates:list[BeltPathLaneState]
+    nextPreferredIndex:int
+
 
 
 class GenericSimulationState: ...
@@ -492,6 +534,19 @@ class BeltFilterSimulationState(GenericSimulationState):
     inputLaneState:BeltLaneState
     outputLaneStates:list[BeltLaneState]
     inputConductorState:SignalConductorInputState
+
+@_serializationId("BeltPortReceiverDisabledState")
+@dataclass
+class BeltPortReceiverDisabledState(GenericSimulationState):
+    outputLaneState:BeltLaneState
+
+@_serializationId("BeltPortSenderTransferState")
+class BeltPortSenderTransferSimulationState(GenericSimulationState):
+
+    NUM_JUMP_LANE_ITEMS = 2
+
+    def __init__(self,jumpLaneState:FastBeltPathLaneState):
+        self.jumpLaneState = jumpLaneState
 
 @_serializationId("BeltReaderState")
 @dataclass
@@ -508,6 +563,12 @@ class ControlledSignalReceiverState(GenericSimulationState):
 @dataclass
 class ControlledSignalTransmitterState(GenericSimulationState):
     inputConductorState:SignalConductorInputState
+
+@_serializationId("ConverterHubProducerState")
+@dataclass
+class ConverterHubProducerSimulationState(GenericSimulationState):
+    outputLaneState:BeltLaneState
+    numProducedItems:int
 
 @_serializationId("ConverterState")
 @dataclass
@@ -688,10 +749,41 @@ class PrioritySplitterSimulationState(GenericSimulationState):
     outputLaneStates:list[BeltLaneState]
     prioritizedIndex:int
 
+@_serializationId("ConverterHubState")
+@dataclass
+class SpaceConverterHubSimulationState(GenericSimulationState):
+    outputLaneBundleStates:list[BundleState[FastBeltPathLaneState]]
+
 @_serializationId("SpaceConverterState")
 @dataclass
 class SpaceConverterSimulationState(GenericSimulationState):
-    pass # todo
+    inputLaneBundleStates:list[BundleState[FastBeltPathLaneState]]
+    simulationBundleState:BundleState[ConverterSimulationState]
+    outputLaneBundleStates:list[BundleState[FastBeltPathLaneState]]
+    conversionCount:int
+
+@_serializationId("SpaceConveyorState")
+@dataclass
+class SpaceConveyorSimulationState(GenericSimulationState):
+    pathBundleState:BundleState[FastBeltPathLaneState]
+
+@_serializationId("SpaceMergerState")
+@dataclass
+class SpaceMergerSimulationState(GenericSimulationState):
+    mergerSimulationBundleState:BundleState[PathMergerSimulationState]
+    inputLaneBundleStates:list[BundleState[FastBeltPathLaneState]]
+
+@_serializationId("ResearchStationState")
+@dataclass
+class SpaceResearchStationSimulationState(GenericSimulationState):
+    inputBundleState:BundleState[FastBeltPathLaneState]
+    processingBundleState:BundleState[FastBeltPathLaneState]
+    outputBundleState:BundleState[FastBeltPathLaneState]
+
+@_serializationId("SpaceSplitterState")
+@dataclass
+class SpaceSplitterSimulationState(GenericSimulationState):
+    splitterSimulationBundleState:BundleState[PathSplitterSimulationState]
 
 @_serializationId("SplitterState")
 @dataclass

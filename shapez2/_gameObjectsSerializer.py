@@ -26,6 +26,10 @@ class Checkpoint(enum.Enum):
     island = checkpointHash("island")
     buildings = checkpointHash("buildings")
     building = checkpointHash("building")
+    fastBeltPathStart = checkpointHash("fast-belt-path:start")
+    fastBeltPathEnd = checkpointHash("fast-belt-path:end")
+    beltPathStateStart = checkpointHash("belt-path-state:start")
+    beltPathStateEnd = checkpointHash("belt-path-state:end")
 
 class InvalidSerializedData(Exception): ...
 class EndOfStreamError(InvalidSerializedData): ...
@@ -361,6 +365,16 @@ class GameObjectsSerializer:
             args.append(attrValue)
         return into(*args)
 
+    def _deserializeBundleState[T](
+        self,
+        reader:BinaryStreamReader,
+        contained:type[T]
+    ) -> gameObjects.BundleState[T]:
+        return gameObjects.BundleState([
+            self.deserialize(reader,contained)
+            for _ in range(gameObjects.BundleState.ENTRIES_PER_BUNDLE)
+        ])
+
     def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
 
         # general game objects
@@ -595,12 +609,83 @@ class GameObjectsSerializer:
         if into == gameObjects.SignalConductorInputState:
             self._autoDeserialize(reader,gameObjects.SignalConductorInputState)
 
+        if into == gameObjects.FastBeltPathLaneState:
+
+            reader.assertCheckpoint(Checkpoint.fastBeltPathStart)
+
+            itemCapacity = reader.readShort()
+            compressedItemsAfterFirst = reader.readShort()
+            firstItemDistance:gameObjects.SimulationSteps
+            items:list[gameObjects.ItemOnBelt] = []
+
+            @reader.readBlob
+            def _():
+                nonlocal firstItemDistance
+
+                count = reader.readInt()
+                firstItemDistance = self.deserialize(reader,gameObjects.SimulationSteps)
+
+                if count <= 0:
+                    return
+
+                for _ in range(count):
+
+                    item = self.deserialize(reader,gameObjects.GenericBeltItem)
+                    nextItemDistance = self.deserialize(reader,gameObjects.SimulationSteps)
+
+                    assert len(items) < itemCapacity
+                    assert item is not None
+
+                    items.append(gameObjects.ItemOnBelt(item,nextItemDistance))
+
+            reader.assertCheckpoint(Checkpoint.fastBeltPathEnd)
+
+            return gameObjects.FastBeltPathLaneState(
+                itemCapacity,
+                compressedItemsAfterFirst,
+                firstItemDistance,
+                items
+            )
+
+        if into == gameObjects.PathMergerSimulationState:
+            return gameObjects.PathMergerSimulationState(
+                [
+                    [
+                        self.deserialize(reader,gameObjects.BeltLaneState)
+                        for _ in range(
+                            gameObjects.PathMergerSimulationState.NUM_ITEMS_PER_LANE
+                        )
+                    ]
+                    for _ in range(reader.readInt1())
+                ],
+                reader.readShort(),
+                reader.readInt1()
+            )
+
+        if into == gameObjects.BeltPathLaneState:
+            reader.assertCheckpoint(Checkpoint.beltPathStateStart)
+            slots = []
+            for _ in range(reader.readInt()):
+                slots.append(self.deserialize(reader,gameObjects.BeltSlotState))
+            reader.assertCheckpoint(Checkpoint.beltPathStateEnd)
+            return gameObjects.BeltPathLaneState(slots)
+
+        if into == gameObjects.PathSplitterSimulationState:
+            return gameObjects.PathSplitterSimulationState(
+                [
+                    self.deserialize(reader,gameObjects.BeltPathLaneState)
+                    for _ in range(reader.readInt1())
+                ],
+                reader.readInt1()
+            )
+
 
 
         if into == gameObjects.GenericSimulationState:
             return self.simulationStateSerializer.deserialize(reader)
 
         for cls in [
+            gameObjects.BeltPortReceiverDisabledState,
             gameObjects.BeltReaderSimulationState,
             gameObjects.ControlledSignalReceiverState,
             gameObjects.ControlledSignalTransmitterState,
@@ -635,6 +720,23 @@ class GameObjectsSerializer:
                 base.inputLaneState,
                 base.outputLaneStates,
                 self.deserialize(reader,gameObjects.SignalConductorInputState)
+            )
+
+        if into == gameObjects.BeltPortSenderTransferSimulationState:
+            assert (reader.readInt1() == gameObjects
+                .BeltPortSenderTransferSimulationState
+                .NUM_JUMP_LANE_ITEMS
+            )
+            return gameObjects.BeltPortSenderTransferSimulationState(
+                self.deserialize(reader,gameObjects.FastBeltPathLaneState)
+            )
+
+        if into == gameObjects.ConverterHubProducerSimulationState:
+            raise ValueError("unused ?")
+            # if it is then also remove serialization
+            return gameObjects.ConverterHubProducerSimulationState(
+                self.deserialize(reader,gameObjects.BeltLaneState),
+                reader.readInt()
             )
 
         if into == gameObjects.ConverterSimulationState:
@@ -673,6 +775,50 @@ class GameObjectsSerializer:
                 base.inputLaneState,
                 base.outputLaneStates,
                 reader.readInt1()
+            )
+
+        if into == gameObjects.SpaceConverterHubSimulationState:
+            return gameObjects.SpaceConverterHubSimulationState([
+                self._deserializeBundleState(reader,gameObjects.FastBeltPathLaneState)
+                for _ in range(reader.readInt1())
+            ])
+
+        if into == gameObjects.SpaceConverterSimulationState:
+            numInputLanes = reader.readInt1()
+            numOutputLanes = reader.readInt1()
+            return gameObjects.SpaceConverterSimulationState(
+                [
+                    self._deserializeBundleState(reader,gameObjects.FastBeltPathLaneState)
+                    for _ in range(numInputLanes)
+                ],
+                self._deserializeBundleState(reader,gameObjects.ConverterSimulationState),
+                [
+                    self._deserializeBundleState(reader,gameObjects.FastBeltPathLaneState)
+                    for _ in range(numOutputLanes)
+                ],
+                reader.readInt()
+            )
+
+        if into == gameObjects.SpaceConveyorSimulationState:
+            return gameObjects.SpaceConveyorSimulationState(
+                self._deserializeBundleState(reader,gameObjects.FastBeltPathLaneState)
+            )
+
+        if into == gameObjects.SpaceMergerSimulationState:
+            return gameObjects.SpaceMergerSimulationState(
+                self._deserializeBundleState(reader,gameObjects.PathMergerSimulationState),
+                [
+                    self._deserializeBundleState(reader,gameObjects.FastBeltPathLaneState)
+                    for _ in range(reader.readInt1())
+                ]
+            )
+
+        if into == gameObjects.SpaceResearchStationSimulationState:
+            raise InvalidSerializedData("Can't deserialize SpaceResearchStationSimulationState (maybe)")
+
+        if into == gameObjects.SpaceSplitterSimulationState:
+            return gameObjects.SpaceSplitterSimulationState(
+                self._deserializeBundleState(reader,gameObjects.PathSplitterSimulationState)
             )
 
         if into == gameObjects.SplitterSimulationState:
@@ -971,6 +1117,50 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.SignalConductorInputState):
             self._autoSerialize(writer,obj)
 
+        @f
+        def _(obj:gameObjects.FastBeltPathLaneState):
+            writer.writeCheckpoint(Checkpoint.fastBeltPathStart)
+            writer.writeShort(obj.itemCapacity)
+            writer.writeShort(obj.compressedItemsAfterFirst)
+            @writer.writeBlob
+            def _():
+                writer.writeInt(len(obj.items))
+                self.serialize(writer,obj.firstItemDistance)
+                for item in obj.items:
+                    self.serialize(writer,item.item,gameObjects.GenericBeltItem)
+                    self.serialize(writer,item.nextItemDistance)
+            writer.writeCheckpoint(Checkpoint.fastBeltPathEnd)
+
+        @f
+        def _(obj:gameObjects.BundleState):
+            assert len(obj.entries) == gameObjects.BundleState.ENTRIES_PER_BUNDLE
+            for e in obj.entries:
+                self.serialize(writer,e)
+
+        @f
+        def _(obj:gameObjects.PathMergerSimulationState):
+            writer.writeInt1(len(obj.inputSegmentSlotStates))
+            for l in obj.inputSegmentSlotStates:
+                for s in l:
+                    self.serialize(writer,s)
+            writer.writeShort(obj.priorityLaneIndex)
+            writer.writeInt1(obj.preferredInputIndex)
+
+        @f
+        def _(obj:gameObjects.BeltPathLaneState):
+            writer.writeCheckpoint(Checkpoint.beltPathStateStart)
+            writer.writeInt(len(obj.slots))
+            for s in obj.slots:
+                self.serialize(writer,s)
+            writer.writeCheckpoint(Checkpoint.beltPathStateEnd)
+
+        @f
+        def _(obj:gameObjects.PathSplitterSimulationState):
+            writer.writeInt1(len(obj.outputLaneStates))
+            for o in obj.outputLaneStates:
+                self.serialize(writer,o)
+            writer.writeInt1(obj.nextPreferredIndex)
+
 
 
         @f
@@ -978,6 +1168,7 @@ class GameObjectsSerializer:
             self.simulationStateSerializer.serialize(writer,obj)
 
         for cls in [
+            gameObjects.BeltPortReceiverDisabledState,
             gameObjects.BeltReaderSimulationState,
             gameObjects.ControlledSignalReceiverState,
             gameObjects.ControlledSignalTransmitterState,
@@ -1016,7 +1207,21 @@ class GameObjectsSerializer:
             self.serialize(writer,obj.inputConductorState)
 
         @f
+        def _(obj:gameObjects.BeltPortSenderTransferSimulationState):
+            writer.writeInt1(gameObjects
+                .BeltPortSenderTransferSimulationState
+                .NUM_JUMP_LANE_ITEMS
+            )
+            self.serialize(writer,obj.jumpLaneState)
+
+        @f
+        def _(obj:gameObjects.ConverterHubProducerSimulationState):
+            self.serialize(writer,obj.outputLaneState)
+            writer.writeInt(obj.numProducedItems)
+
+        @f
         def _(obj:gameObjects.ConverterSimulationState):
+            raise ValueError("unused ?")
             writer.writeInt1(len(obj.processingReceiverStates))
             writer.writeInt1(len(obj.outputLaneStates))
             for lane in (
@@ -1054,6 +1259,45 @@ class GameObjectsSerializer:
                 obj.outputLaneStates
             ))
             writer.writeInt1(obj.prioritizedIndex)
+
+        @f
+        def _(obj:gameObjects.SpaceConverterHubSimulationState):
+            writer.writeInt1(len(obj.outputLaneBundleStates))
+            for o in obj.outputLaneBundleStates:
+                self.serialize(writer,o)
+
+        @f
+        def _(obj:gameObjects.SpaceConverterSimulationState):
+            writer.writeInt1(len(obj.inputLaneBundleStates))
+            writer.writeInt1(len(obj.outputLaneBundleStates))
+            for i in obj.inputLaneBundleStates:
+                self.serialize(writer,i)
+            self.serialize(writer,obj.simulationBundleState)
+            for o in obj.outputLaneBundleStates:
+                self.serialize(writer,o)
+            writer.writeInt(obj.conversionCount)
+
+        @f
+        def _(obj:gameObjects.SpaceConveyorSimulationState):
+            self.serialize(writer,obj.pathBundleState)
+
+        @f
+        def _(obj:gameObjects.SpaceMergerSimulationState):
+            self.serialize(writer,obj.mergerSimulationBundleState)
+            writer.writeInt1(len(obj.inputLaneBundleStates))
+            for i in obj.inputLaneBundleStates:
+                self.serialize(writer,i)
+
+        @f
+        def _(obj:gameObjects.SpaceResearchStationSimulationState):
+            raise ValueError("unused ?")
+            self.serialize(writer,obj.inputBundleState)
+            self.serialize(writer,obj.processingBundleState)
+            self.serialize(writer,obj.outputBundleState)
+
+        @f
+        def _(obj:gameObjects.SpaceSplitterSimulationState):
+            self.serialize(writer,obj.splitterSimulationBundleState)
 
         @f
         def _(obj:gameObjects.SplitterSimulationState):
