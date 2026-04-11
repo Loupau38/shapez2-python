@@ -56,7 +56,6 @@ class PlacedIsland:
 class SavegameMap:
     temp_simulationState:bytes
     placedIslands:list[PlacedIsland]
-    temp_islandAndBuildingStates:list[tuple[int,bytes]]
     temp_trains:bytes
     temp_resourceChunks:bytes
     temp_cargo:bytes
@@ -64,7 +63,7 @@ class SavegameMap:
 @dataclass
 class Savegame:
     map:SavegameMap
-    temp_stringsLUT:StringLUTReadWrite
+    temp_stringsLUT:StringLUTReadWrite # remove when all other parts are done
     temp_statistics:bytes
     temp_info:bytes
     temp_research:bytes
@@ -199,13 +198,36 @@ def _decodeIslandStates(
         def _():
             placedIsland.simulationState = serializer.deserialize(reader,gameObjects.GenericSimulationState)
 
+    def decodeBuilding() -> None:
+
+        buildingPos = serializer.deserialize(reader,gameObjects.GlobalTileCoordinate)
+        buildingDefinition = serializer.deserialize(reader,buildings.BuildingInternalVariant)
+
+        placedBuilding = buildingsMap.get(buildingPos)
+
+        if placedBuilding is None:
+            raise InvalidSerializedData(f"Building '{buildingDefinition.id}' not found at {buildingPos}")
+
+        if placedBuilding.type != buildingDefinition:
+            raise InvalidSerializedData(
+                f"Building '{placedBuilding.type.id}' was expected to be '{buildingDefinition.id}'"
+            )
+
+        @reader.readBlob
+        def _():
+            placedBuilding.simulationState = serializer.deserialize(reader,gameObjects.GenericSimulationState)
+
     for islandIndex in range(reader.readInt()):
         try:
             decodeIsland()
         except InvalidSerializedData as e:
             raise InvalidSerializedData(f"Error while reading island state #{islandIndex} : {e}")
 
-    ...
+    for buildingIndex in range(reader.readInt()):
+        try:
+            decodeBuilding()
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(f"Error while reading building state #{buildingIndex} : {e}")
 
 def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
@@ -299,7 +321,6 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
         SavegameMap(
             simulationStateRaw,
             decodedIslands,
-            islandAndBuildingStatesRaw,
             trainsRaw,
             resourceChunksRaw,
             cargoRaw
@@ -356,11 +377,55 @@ def _encodeIslands(
                 writer.writeBool(False)
             else:
                 writer.writeBool(True)
-                serializer.serialize(writer,island.configuration) # no type override
+                @writer.writeBlob
+                def _():
+                    serializer.serialize(writer,island.configuration) # no type override
 
             @writer.writeBlob
             def _():
                 _encodeBuildings(island.placedBuildings,writer,serializer)
+
+def _encodeIslandStates(
+    islands:list[PlacedIsland],
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeInt(len(islands))
+    placedBuildings:list[tuple[gameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
+
+    for island in islands:
+
+        serializer.serialize(writer,island.pos)
+        serializer.serialize(writer,island.type)
+
+        @writer.writeBlob
+        def _():
+            serializer.serialize(
+                writer,
+                island.simulationState,
+                gameObjects.GenericSimulationState
+            )
+
+        placedBuildings.extend(
+            (b.pos.toGlobalTile(island.pos),b)
+            for b in island.placedBuildings
+        )
+
+    writer.writeInt(len(placedBuildings))
+
+    for buildingPos,building in placedBuildings:
+
+        serializer.serialize(writer,buildingPos)
+        serializer.serialize(writer,building.type)
+
+        @writer.writeBlob
+        def _():
+            serializer.serialize(
+                writer,
+                building.simulationState,
+                gameObjects.GenericSimulationState
+            )
 
 def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> None:
 
@@ -376,23 +441,41 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     maxIslandsPerBundle = math.ceil(4**math.log10(len(islandsToEncode)))
     assert (maxIslandsPerBundle > 0) or (len(islandsToEncode) == 0)
 
-    encodedIslands:list[tuple[int,bytes]] = []
+    encodedPlacedIslands:list[tuple[int,bytes]] = []
+    encodedIslandAndBuildingStates:list[tuple[int,bytes]] = []
 
     curBundle = []
     curBundleIndex = 0
     lastBundle = False
     while not lastBundle:
+
         if len(islandsToEncode) == 0:
             lastBundle = True
         else:
             curBundle.append(islandsToEncode.pop(0))
+
         if (len(curBundle) >= maxIslandsPerBundle) or (lastBundle and (len(curBundle) > 0)):
-            writer = BinaryStreamWriterWithStringLUT(
+
+            placedIslandsWriter = BinaryStreamWriterWithStringLUT(
                 useCheckpoints,
                 savegame.temp_stringsLUT
             )
-            _encodeIslands(curBundle,writer,serializer)
-            encodedIslands.append((curBundleIndex,writer.toBytes()))
+            _encodeIslands(curBundle,placedIslandsWriter,serializer)
+            encodedPlacedIslands.append((
+                curBundleIndex,
+                placedIslandsWriter.toBytes()
+            ))
+
+            islandStatesWriter = BinaryStreamWriterWithStringLUT(
+                useCheckpoints,
+                savegame.temp_stringsLUT
+            )
+            _encodeIslandStates(curBundle,islandStatesWriter,serializer)
+            encodedIslandAndBuildingStates.append((
+                curBundleIndex,
+                islandStatesWriter.toBytes()
+            ))
+
             curBundleIndex += 1
             curBundle.clear()
 
@@ -411,12 +494,12 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         f.writestr(FilePaths.cargo,savegame.map.temp_cargo)
         for fileList,prefix,suffix in [
             (
-                encodedIslands,
+                encodedPlacedIslands,
                 FilePaths.placedIslandsPrefix,
                 FilePaths.placedIslandsSuffix
             ),
             (
-                savegame.map.temp_islandAndBuildingStates,
+                encodedIslandAndBuildingStates,
                 FilePaths.islandAndBuildingStatesPrefix,
                 FilePaths.islandAndBuildingStatesSuffix
             )

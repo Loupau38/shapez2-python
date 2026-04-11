@@ -524,6 +524,32 @@ class PathSplitterSimulationState:
     outputLaneStates:list[BeltPathLaneState]
     nextPreferredIndex:int
 
+@dataclass
+class SimulationTimedBufferItem[T]:
+    item:T
+    selfExcess:SimulationTicks
+
+@dataclass
+class SimulationBufferState[T]:
+    queue:list[SimulationTimedBufferItem[T]]
+
+class BeltItemSimulationBufferState(SimulationBufferState[GenericBeltItem]): ...
+
+@dataclass
+class FluidPackageData:
+    fluid:GenericFluid|None
+    amount:FluidUnit
+
+@dataclass
+class FluidPackageLaunchData:
+    fluidPackage:FluidPackageData
+    remainingTicks:SimulationTicks
+    totalTicks:SimulationTicks
+
+@dataclass
+class FluidPackageLaunchState:
+    travellingPackageLaunch:FluidPackageLaunchData
+
 
 
 class GenericSimulationState: ...
@@ -539,6 +565,28 @@ class BeltFilterSimulationState(GenericSimulationState):
 @dataclass
 class BeltPortReceiverDisabledState(GenericSimulationState):
     outputLaneState:BeltLaneState
+
+@_serializationId("BeltPortSenderBlockedState")
+@dataclass
+class BeltPortSenderBlockedState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+
+@_serializationId("BeltPortSenderDiscardState")
+@dataclass
+class BeltPortSenderDiscardState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+
+@_serializationId("BeltPortSenderToHubState")
+@dataclass
+class BeltPortSenderToHubSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    vortexLaneState:FastBeltPathLaneState
+
+@_serializationId("BeltPortSenderToSpacePathState")
+@dataclass
+class BeltPortSenderToSpacePathSimulationState(GenericSimulationState):
+    pathLaneState:BeltPathLaneState
+    bufferState:BeltItemSimulationBufferState
 
 @_serializationId("BeltPortSenderTransferState")
 class BeltPortSenderTransferSimulationState(GenericSimulationState):
@@ -602,6 +650,40 @@ class CrystalGeneratorSimulationState(GenericSimulationState):
 @dataclass
 class DisplaySimulationState(GenericSimulationState):
     inputConductorState:SignalConductorInputState
+
+@_serializationId("ExtractorState")
+@dataclass
+class ExtractorSimulationState(GenericSimulationState):
+    processingLaneState:BeltLaneState
+    outputLaneState:BeltLaneState
+
+@_serializationId("FluidPortReceiverDisabledState")
+@dataclass
+class FluidPortReceiverDisabledState(GenericSimulationState):
+    outputContainer:FluidContainerState
+
+@_serializationId("FluidPortSenderBlockedState")
+@dataclass
+class FluidPortSenderBlockedState(GenericSimulationState):
+    inputContainer:FluidContainerState
+
+@_serializationId("FluidPortSenderDiscardState")
+@dataclass
+class FluidPortSenderDiscardState(GenericSimulationState):
+    inputContainer:FluidContainerState
+
+@_serializationId("FluidPortSenderToSpacePipeState")
+@dataclass
+class FluidPortSenderToSpacePipeSimulationState(GenericSimulationState):
+    inputContainer:FluidContainerState
+    launchState:FluidPackageLaunchState
+
+@_serializationId("FluidPortTransferState")
+@dataclass
+class FluidPortTransferState(GenericSimulationState):
+    inputContainer:FluidContainerState
+    launchState:FluidPackageLaunchState
+    outputContainer:FluidContainerState
 
 @_serializationId("FluidStorageState")
 @dataclass
@@ -749,6 +831,16 @@ class PrioritySplitterSimulationState(GenericSimulationState):
     outputLaneStates:list[BeltLaneState]
     prioritizedIndex:int
 
+@_serializationId("SignalPortSenderBlockedState")
+@dataclass
+class SignalPortSenderBlockedState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
+
+@_serializationId("SignalPortTransferState")
+@dataclass
+class SignalPortTransferState(GenericSimulationState):
+    inputConductorState:SignalConductorInputState
+
 @_serializationId("ConverterHubState")
 @dataclass
 class SpaceConverterHubSimulationState(GenericSimulationState):
@@ -773,6 +865,21 @@ class SpaceMergerSimulationState(GenericSimulationState):
     mergerSimulationBundleState:BundleState[PathMergerSimulationState]
     inputLaneBundleStates:list[BundleState[FastBeltPathLaneState]]
 
+@_serializationId("SpacePathToBeltPortReceiverState")
+@dataclass
+class SpacePathToBeltPortReceiverSimulationState(GenericSimulationState):
+    inputLaneState:BeltLaneState
+    pathLaneState:FastBeltPathLaneState
+    bufferState:BeltItemSimulationBufferState
+
+@_serializationId("SpacePipeToFluidPortReceiverState")
+@dataclass
+class SpacePipeToFluidPortReceiverSimulationState(GenericSimulationState):
+    outputContainer:FluidContainerState
+    launchState:FluidPackageLaunchState
+    bufferState:BeltItemSimulationBufferState
+    inputLaneState:BeltLaneState
+
 @_serializationId("ResearchStationState")
 @dataclass
 class SpaceResearchStationSimulationState(GenericSimulationState):
@@ -784,6 +891,11 @@ class SpaceResearchStationSimulationState(GenericSimulationState):
 @dataclass
 class SpaceSplitterSimulationState(GenericSimulationState):
     splitterSimulationBundleState:BundleState[PathSplitterSimulationState]
+
+@_serializationId("SpaceTrashState")
+@dataclass
+class SpaceTrashSimulationState(GenericSimulationState):
+    inputBundleState:BundleState[FastBeltPathLaneState]
 
 @_serializationId("SplitterState")
 @dataclass
@@ -799,6 +911,14 @@ class StackerSimulationState(GenericSimulationState):
     processingLaneState:BeltLaneState
     outputLaneState:BeltLaneState
     currentCollapseResult:ShapeCollapseResult|None
+
+@_serializationId("TrashState")
+class TrashSimulationState(GenericSimulationState):
+
+    NUM_LANES = 4
+
+    def __init__(self,laneStates:list[BeltLaneState]):
+        self.laneStates = laneStates
 
 @_serializationId("Virtual1InSimulationState")
 @dataclass
