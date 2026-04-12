@@ -31,6 +31,7 @@ class Checkpoint(enum.Enum):
     fastBeltPathEnd = checkpointHash("fast-belt-path:end")
     beltPathStateStart = checkpointHash("belt-path-state:start")
     beltPathStateEnd = checkpointHash("belt-path-state:end")
+    trainData = checkpointHash("TrainData")
 
 class InvalidSerializedData(Exception): ...
 class EndOfStreamError(InvalidSerializedData): ...
@@ -365,15 +366,16 @@ class GameObjectsSerializer:
     def _autoDeserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
         args = []
         for attrType in inspect.get_annotations(into).values():
-            if isinstance(attrType,types.UnionType):
+            if typing.get_origin(attrType) == types.UnionType:
+                unionArgs = typing.get_args(attrType)
                 if (
-                    (len(attrType.__args__) != 2)
-                    or (attrType.__args__[1] != types.NoneType)
+                    (len(unionArgs) != 2)
+                    or (unionArgs[1] != types.NoneType)
                 ):
                     raise ValueError(
                         f"Invalid union type for auto deserialization : {attrType}"
                     )
-                actualType = attrType.__args__[0]
+                actualType = unionArgs[0]
             else:
                 actualType = attrType
             if actualType == bool:
@@ -383,12 +385,14 @@ class GameObjectsSerializer:
             args.append(attrValue)
         return into(*args)
 
-    def deserialize[T](
-        self,
-        reader:BinaryStreamReader,
-        into:type[T],
-        containedType:type|None=None
-    ) -> T:
+    def deserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
+
+        typeOrigin = typing.get_origin(into)
+        if typeOrigin is None:
+            containedType = None
+        else:
+            containedType = typing.get_args(into)[0]
+            into = typeOrigin
 
         # general game objects
 
@@ -451,9 +455,15 @@ class GameObjectsSerializer:
             if itemType == 2:
                 return self.deserialize(reader,gameObjects.FluidPackageItem)
             if itemType == 3:
-                return self.deserialize(reader,gameObjects.FluidPackageOnTrack)
+                return gameObjects.PackageOnTrack(self.deserialize(
+                    reader,
+                    gameObjects.CargoPackage[gameObjects.GenericFluid] # FluidId ingame
+                ))
             if itemType == 4:
-                return self.deserialize(reader,gameObjects.ShapePackageOnTrack)
+                return gameObjects.PackageOnTrack(self.deserialize(
+                    reader,
+                    gameObjects.CargoPackage[gameObjects.ShapeItem] # ShapeId ingame
+                ))
             raise InvalidSerializedData(f"Unknown belt item type : {itemType}")
 
         if into == gameObjects.ShapeItem:
@@ -479,18 +489,14 @@ class GameObjectsSerializer:
         if into == gameObjects.FluidUnit:
             return gameObjects.FluidUnit(reader.readLong())
 
-        if into == gameObjects.FluidPackageOnTrack:
+        if into == gameObjects.CargoPackage:
+            if containedType is None:
+                raise ValueError(f"{gameObjects.CargoPackage.__name__} needs a contained type")
             amount = reader.readShort()
-            return gameObjects.FluidPackageOnTrack(
+            return gameObjects.CargoPackage(
                 amount,
-                None if amount == 0 else self.deserialize(reader,gameObjects.GenericFluid)
-            )
-
-        if into == gameObjects.ShapePackageOnTrack:
-            amount = reader.readShort()
-            return gameObjects.ShapePackageOnTrack(
-                amount,
-                None if amount == 0 else self.deserialize(reader,gameObjects.ShapeItem)
+                None if amount == 0 else self.deserialize(reader,containedType),
+                containedType
             )
 
         if into == gameObjects.SignalChannelId:
@@ -535,7 +541,7 @@ class GameObjectsSerializer:
         if into == gameObjects.GlobalSignalReceiverConfig:
             return self._autoDeserialize(reader,gameObjects.GlobalSignalReceiverConfig)
 
-        # specific cases
+        # misc
 
         if into == islands.Island:
             islandId = reader.readString()
@@ -550,6 +556,27 @@ class GameObjectsSerializer:
             if building is None:
                 raise InvalidSerializedData(f"Unknown building internal variant ID : {buildingId}")
             return building
+
+        if into == gameObjects.LayeredWagonCargo:
+            if containedType is None:
+                raise ValueError(f"{gameObjects.LayeredWagonCargo.__name__} needs a contained type")
+            return gameObjects.LayeredWagonCargo([
+                self.deserialize(reader,containedType)
+                for _ in range(reader.readInt1())
+            ])
+
+        if into == gameObjects.CargoContainer:
+            if containedType is None:
+                raise ValueError(f"{gameObjects.CargoContainer.__name__} needs a contained type")
+            numPackages = reader.readShort()
+            maxPackages = reader.readShort()
+            return gameObjects.CargoContainer(
+                [
+                    self.deserialize(reader,gameObjects.CargoPackage[containedType])
+                    for _ in range(numPackages)
+                ],
+                maxPackages
+            )
 
         # simulation states
 
@@ -747,8 +774,7 @@ class GameObjectsSerializer:
             return gameObjects.BeltItemSimulationBufferState(
                 self.deserialize(
                     reader,
-                    gameObjects.SimulationBufferState,
-                    gameObjects.GenericBeltItem
+                    gameObjects.SimulationBufferState[gameObjects.GenericBeltItem]
                 ).queue
             )
 
@@ -801,8 +827,10 @@ class GameObjectsSerializer:
             gameObjects.RotatorSimulationState,
             gameObjects.SignalPortSenderBlockedState,
             gameObjects.SignalPortTransferState,
+            gameObjects.SpaceConveyorSimulationState,
             gameObjects.SpacePathToBeltPortReceiverSimulationState,
             gameObjects.SpacePipeToFluidPortReceiverSimulationState,
+            gameObjects.SpaceSplitterSimulationState,
             gameObjects.StackerSimulationState,
             gameObjects.Virtual1InSimulationState,
             gameObjects.Virtual2InSimulationState
@@ -887,7 +915,7 @@ class GameObjectsSerializer:
 
         if into == gameObjects.SpaceConverterHubSimulationState:
             return gameObjects.SpaceConverterHubSimulationState([
-                self.deserialize(reader,gameObjects.BundleState,gameObjects.FastBeltPathLaneState)
+                self.deserialize(reader,gameObjects.BundleState[gameObjects.FastBeltPathLaneState])
                 for _ in range(reader.readInt1())
             ])
 
@@ -896,27 +924,22 @@ class GameObjectsSerializer:
             numOutputLanes = reader.readInt1()
             return gameObjects.SpaceConverterSimulationState(
                 [
-                    self.deserialize(reader,gameObjects.BundleState,gameObjects.FastBeltPathLaneState)
+                    self.deserialize(reader,gameObjects.BundleState[gameObjects.FastBeltPathLaneState])
                     for _ in range(numInputLanes)
                 ],
-                self.deserialize(reader,gameObjects.BundleState,gameObjects.ConverterSimulationState),
+                self.deserialize(reader,gameObjects.BundleState[gameObjects.ConverterSimulationState]),
                 [
-                    self.deserialize(reader,gameObjects.BundleState,gameObjects.FastBeltPathLaneState)
+                    self.deserialize(reader,gameObjects.BundleState[gameObjects.FastBeltPathLaneState])
                     for _ in range(numOutputLanes)
                 ],
                 reader.readInt()
             )
 
-        if into == gameObjects.SpaceConveyorSimulationState:
-            return gameObjects.SpaceConveyorSimulationState(
-                self.deserialize(reader,gameObjects.BundleState,gameObjects.FastBeltPathLaneState)
-            )
-
         if into == gameObjects.SpaceMergerSimulationState:
             return gameObjects.SpaceMergerSimulationState(
-                self.deserialize(reader,gameObjects.BundleState,gameObjects.PathMergerSimulationState),
+                self.deserialize(reader,gameObjects.BundleState[gameObjects.PathMergerSimulationState]),
                 [
-                    self.deserialize(reader,gameObjects.BundleState,gameObjects.FastBeltPathLaneState)
+                    self.deserialize(reader,gameObjects.BundleState[gameObjects.FastBeltPathLaneState])
                     for _ in range(reader.readInt1())
                 ]
             )
@@ -926,11 +949,6 @@ class GameObjectsSerializer:
                 "Can't deserialize "
                 + gameObjects.SpaceResearchStationSimulationState.__name__
                 + " (maybe)"
-            )
-
-        if into == gameObjects.SpaceSplitterSimulationState:
-            return gameObjects.SpaceSplitterSimulationState(
-                self.deserialize(reader,gameObjects.BundleState,gameObjects.PathSplitterSimulationState)
             )
 
         if into == gameObjects.SpaceTrashSimulationState:
@@ -959,15 +977,16 @@ class GameObjectsSerializer:
     def _autoSerialize(self,writer:BinaryStreamWriter,obj:typing.Any) -> None:
         for attrName,attrType in inspect.get_annotations(type(obj)).items():
             kwargs = {}
-            if isinstance(attrType,types.UnionType):
+            if typing.get_origin(attrType) == types.UnionType:
+                unionArgs = typing.get_args(attrType)
                 if (
-                    (len(attrType.__args__) != 2)
-                    or (attrType.__args__[1] != types.NoneType)
+                    (len(unionArgs) != 2)
+                    or (unionArgs[1] != types.NoneType)
                 ):
                     raise ValueError(
                         f"Invalid union type for auto serialization : {attrType}"
                     )
-                kwargs["objTypeOverride"] = attrType.__args__[0]
+                kwargs["objTypeOverride"] = unionArgs[0]
             elif attrType.__name__.startswith("Generic"):
                 kwargs["objTypeOverride"] = attrType
             attrValue = getattr(obj,attrName)
@@ -981,7 +1000,7 @@ class GameObjectsSerializer:
         writer:BinaryStreamWriter,
         obj:typing.Any,
         objTypeOverride:type|None=None,
-        containedType:type|None=None
+        containedTypeOverride:type|None=None
     ) -> None:
         """Specify a type override when serializing a generic or if 'obj' can be None !"""
 
@@ -991,6 +1010,16 @@ class GameObjectsSerializer:
             objType = type(obj)
         else:
             objType = objTypeOverride
+
+        typeOrigin = typing.get_origin(objType)
+        if typeOrigin is None:
+            containedType = None
+        else:
+            containedType = typing.get_args(objType)[0]
+            objType = typeOrigin
+
+        if containedTypeOverride is not None:
+            containedType = containedTypeOverride
 
         typeMatch = None
         def f(func:Callable[[typing.Any],None],funcTypeOverride:type|None=None) -> None:
@@ -1075,14 +1104,18 @@ class GameObjectsSerializer:
                 writer.writeInt1(2)
                 self.serialize(writer,obj)
                 return
-            if isinstance(obj,gameObjects.FluidPackageOnTrack):
-                writer.writeInt1(3)
-                self.serialize(writer,obj)
-                return
-            if isinstance(obj,gameObjects.ShapePackageOnTrack):
-                writer.writeInt1(4)
-                self.serialize(writer,obj)
-                return
+            if (
+                isinstance(obj,gameObjects.PackageOnTrack)
+                and isinstance(obj.container,gameObjects.CargoPackage)
+            ):
+                if obj.container._itemType == gameObjects.GenericFluid: # FluidId ingame
+                    writer.writeInt1(3)
+                    self.serialize(writer,obj.container)
+                    return
+                if obj.container._itemType == gameObjects.ShapeItem: # ShapeId ingame
+                    writer.writeInt1(4)
+                    self.serialize(writer,obj.container)
+                    return
             raise ValueError(f"Unknown belt item type : {type(obj)}")
 
         @f
@@ -1113,16 +1146,10 @@ class GameObjectsSerializer:
             writer.writeLong(obj.units)
 
         @f
-        def _(obj:gameObjects.FluidPackageOnTrack):
+        def _(obj:gameObjects.CargoPackage):
             writer.writeShort(obj.amount)
             if obj.amount != 0:
-                self.serialize(writer,obj.fluid,gameObjects.GenericFluid)
-
-        @f
-        def _(obj:gameObjects.ShapePackageOnTrack):
-            writer.writeShort(obj.amount)
-            if obj.amount != 0:
-                self.serialize(writer,obj.shape,gameObjects.ShapeItem)
+                self.serialize(writer,obj.item,obj._itemType)
 
         @f
         def _(obj:gameObjects.SignalChannelId):
@@ -1170,7 +1197,7 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.GlobalSignalReceiverConfig):
             self._autoSerialize(writer,obj)
 
-        # specifc cases
+        # misc
 
         @f
         def _(obj:islands.Island):
@@ -1179,6 +1206,27 @@ class GameObjectsSerializer:
         @f
         def _(obj:buildings.BuildingInternalVariant):
             writer.writeString(obj.id)
+
+        @f
+        def _(obj:gameObjects.LayeredWagonCargo):
+            writer.writeInt1(len(obj.containers))
+            for c in obj.containers:
+                self.serialize(
+                    writer,
+                    c,
+                    containedType # intentionally None if no containedType specified
+                )
+
+        @f
+        def _(obj:gameObjects.CargoContainer):
+            writer.writeShort(len(obj.packages))
+            writer.writeShort(obj.maxPackages)
+            for p in obj.packages:
+                self.serialize(
+                    writer,
+                    p,
+                    containedTypeOverride=containedType # intentionally None if no containedType specified
+                )
 
         # simulation states
 
@@ -1319,8 +1367,7 @@ class GameObjectsSerializer:
             self.serialize(
                 writer,
                 obj,
-                gameObjects.SimulationBufferState,
-                gameObjects.GenericBeltItem
+                gameObjects.SimulationBufferState[gameObjects.GenericBeltItem]
             )
 
         @f
@@ -1376,8 +1423,10 @@ class GameObjectsSerializer:
             gameObjects.RotatorSimulationState,
             gameObjects.SignalPortSenderBlockedState,
             gameObjects.SignalPortTransferState,
+            gameObjects.SpaceConveyorSimulationState,
             gameObjects.SpacePathToBeltPortReceiverSimulationState,
             gameObjects.SpacePipeToFluidPortReceiverSimulationState,
+            gameObjects.SpaceSplitterSimulationState,
             gameObjects.StackerSimulationState,
             gameObjects.Virtual1InSimulationState,
             gameObjects.Virtual2InSimulationState
@@ -1452,77 +1501,43 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.SpaceConverterHubSimulationState):
             writer.writeInt1(len(obj.outputLaneBundleStates))
             for o in obj.outputLaneBundleStates:
-                self.serialize(writer,o,containedType=gameObjects.FastBeltPathLaneState)
+                self.serialize(writer,o,containedTypeOverride=gameObjects.FastBeltPathLaneState)
 
         @f
         def _(obj:gameObjects.SpaceConverterSimulationState):
             writer.writeInt1(len(obj.inputLaneBundleStates))
             writer.writeInt1(len(obj.outputLaneBundleStates))
             for i in obj.inputLaneBundleStates:
-                self.serialize(writer,i,containedType=gameObjects.FastBeltPathLaneState)
+                self.serialize(writer,i,containedTypeOverride=gameObjects.FastBeltPathLaneState)
             self.serialize(
                 writer,
                 obj.simulationBundleState,
-                containedType=gameObjects.ConverterSimulationState
+                containedTypeOverride=gameObjects.ConverterSimulationState
             )
             for o in obj.outputLaneBundleStates:
-                self.serialize(writer,o,containedType=gameObjects.FastBeltPathLaneState)
+                self.serialize(writer,o,containedTypeOverride=gameObjects.FastBeltPathLaneState)
             writer.writeInt(obj.conversionCount)
-
-        @f
-        def _(obj:gameObjects.SpaceConveyorSimulationState):
-            self.serialize(
-                writer,
-                obj.pathBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
 
         @f
         def _(obj:gameObjects.SpaceMergerSimulationState):
             self.serialize(
                 writer,
                 obj.mergerSimulationBundleState,
-                containedType=gameObjects.PathMergerSimulationState
+                containedTypeOverride=gameObjects.PathMergerSimulationState
             )
             writer.writeInt1(len(obj.inputLaneBundleStates))
             for i in obj.inputLaneBundleStates:
-                self.serialize(writer,i,containedType=gameObjects.FastBeltPathLaneState)
+                self.serialize(writer,i,containedTypeOverride=gameObjects.FastBeltPathLaneState)
 
         @f
         def _(obj:gameObjects.SpaceResearchStationSimulationState):
             raise ValueError("unused ?")
-            self.serialize(
-                writer,
-                obj.inputBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
-            self.serialize(
-                writer,
-                obj.processingBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
-            self.serialize(
-                writer,
-                obj.outputBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
-
-        @f
-        def _(obj:gameObjects.SpaceSplitterSimulationState):
-            self.serialize(
-                writer,
-                obj.splitterSimulationBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.SpaceTrashSimulationState):
             raise ValueError("unused ?")
-            self.serialize(
-                writer,
-                obj.inputBundleState,
-                containedType=gameObjects.FastBeltPathLaneState
-            )
+            self._autoSerialize(writer,obj)
 
         @f
         def _(obj:gameObjects.SplitterSimulationState):

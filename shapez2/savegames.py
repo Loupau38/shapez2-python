@@ -292,14 +292,259 @@ def _encodeIslandStates(
 
 #region trains
 
+class WagonState(enum.Enum):
+    moving = 0
+    airborne = 1
+    twisting = 2
+    flipping = 3
+    inQueueForProduction = 4
+    producing = 5
+    looping = 6
+    launchingIntoHub = 7
+    loopingFlipped = 8
+
+@dataclass
+class WagonNavigationData:
+    incomingPosition:gameObjects.GlobalChunkCoordinate
+    outgoingPosition:gameObjects.GlobalChunkCoordinate
+    incomingDirection:gameObjects.ChunkDirection
+    outgoingDirection:gameObjects.ChunkDirection
+    upsideDown:bool
+    state:WagonState
+    travelledChunksInsideJump:float
+    jumpLength:float
+
+    # ingame this is stored elsewhere
+    # but moved here for convenience
+    cargo:gameObjects.LayeredWagonCargo[
+        gameObjects.CargoContainer[
+            gameObjects.ShapeItem # ShapeId ingame
+            | gameObjects.GenericFluid # FluidId ingame
+        ]
+    ] | None = None
+    # not ingame but needed here because the different lists inside `cargo` can be empty
+    cargoType:typing.Literal["shape","fluid"] | None = None
+
+class TrainSimulationState(enum.Enum):
+    idle = 0
+    moving = 1
+
+@dataclass
+class TrainSimulationData:
+    color:str
+    chunkProgress:float
+    state:TrainSimulationState
+    upsideDown:bool
+    wagons:list[WagonNavigationData]
+    velocity:float
+    maxSpeedAhead:float
+    acceleration:float
+    chunksUntilMaxSpeedShouldBeRespected:float
+    isStopped:bool
+    wasStoppedInCurrentChunk:bool
+    stopTime:gameObjects.SimulationTicks
+
+@dataclass
+class TrainNavigationState:
+    data:TrainSimulationData
+    occupiedRails:list[gameObjects.SidedCoordinate]
+
+@dataclass
+class TrainState:
+    navigationState:TrainNavigationState
+    parentProducerPosition:gameObjects.GlobalChunkCoordinate
+
+@dataclass
 class TrainsSimulation:
-    pass
+    trains:list[TrainState]
 
 def _decodeTrains(
     reader:BinaryStreamReaderWithStringLUT,
     serializer:GameObjectsSerializer
 ) -> TrainsSimulation:
-    pass
+
+    decodedTrains:list[TrainState] = []
+
+    def decodeTrain() -> None:
+
+        reader.assertCheckpoint(Checkpoint.trainData)
+        curTrain:TrainState
+
+        @reader.readBlob
+        def _():
+            nonlocal curTrain
+
+            navState:TrainNavigationState
+
+            @reader.readBlob
+            def _():
+                nonlocal navState
+
+                def getColor() -> str:
+                    color = reader.readString()
+                    if color is None:
+                        raise InvalidSerializedData("Train color can't be None")
+                    return color
+
+                def getSerializedEnum[T:enum.Enum](cls:enum.EnumType[T]) -> T:
+                    raw = reader.readInt1()
+                    if raw not in cls:
+                        raise InvalidSerializedData(f"Invalid value for {cls.__name__} : {raw}")
+                    return cls(raw)
+
+                def getWagons() -> list[WagonNavigationData]:
+                    wagons = []
+                    for i in range(reader.readInt()):
+                        try:
+                            wagons.append(WagonNavigationData(
+                                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
+                                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
+                                getSerializedEnum(gameObjects.ChunkDirection),
+                                getSerializedEnum(gameObjects.ChunkDirection),
+                                reader.readBool(),
+                                getSerializedEnum(WagonState),
+                                reader.readFloat(),
+                                reader.readFloat()
+                            ))
+                        except InvalidSerializedData as e:
+                            raise InvalidSerializedData(f"Error while reading wagon #{i} : {e}")
+                    return wagons
+
+                navState = TrainNavigationState(
+                    TrainSimulationData(
+                        getColor(),
+                        reader.readFloat(),
+                        getSerializedEnum(TrainSimulationState),
+                        reader.readBool(),
+                        getWagons(),
+                        reader.readFloat(),
+                        reader.readFloat(),
+                        reader.readFloat(),
+                        reader.readFloat(),
+                        reader.readBool(),
+                        reader.readBool(),
+                        serializer.deserialize(reader,gameObjects.SimulationTicks)
+                    ),
+                    [
+                        gameObjects.SidedCoordinate(
+                            serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
+                            reader.readBool()
+                        )
+                        for _ in range(reader.readInt())
+                    ]
+                )
+
+            curTrain = TrainState(
+                navState,
+                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate)
+            )
+
+            for text,dataType in (
+                ("fluid",gameObjects.GenericFluid), # FluidId ingame
+                ("shape",gameObjects.ShapeItem) # ShapeId ingame
+            ):
+
+                @reader.readBlob
+                def _():
+
+                    for i in range(reader.readInt()):
+                        try:
+
+                            wagonIndex = reader.readInt()
+                            print(f"TODO : check wagon index range : {wagonIndex}")
+                            decodedCargo = serializer.deserialize(
+                                reader,
+                                gameObjects.LayeredWagonCargo[
+                                    gameObjects.CargoContainer[
+                                        dataType
+                                    ]
+                                ]
+                            )
+
+                            if (wagonIndex < 0) or (wagonIndex >= len(navState.data.wagons)):
+                                raise InvalidSerializedData(f"Wagon index out of range : {wagonIndex}")
+
+                            if navState.data.wagons[wagonIndex].cargo is not None:
+                                raise InvalidSerializedData(f"Wagon #{wagonIndex} already has cargo")
+
+                            navState.data.wagons[wagonIndex].cargo = decodedCargo
+                            navState.data.wagons[wagonIndex].cargoType = text
+
+                        except InvalidSerializedData as e:
+                            raise InvalidSerializedData(f"Error while reading {text} cargo #{i} : {e}")
+
+        decodedTrains.append(curTrain)
+
+    for i in range(reader.readInt()):
+        try:
+            decodeTrain()
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(f"Error while reading train #{i} : {e}")
+
+    return TrainsSimulation(decodedTrains)
+
+def _encodeTrains(
+    trains:TrainsSimulation,
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeInt(len(trains.trains))
+
+    for train in trains.trains:
+
+        writer.writeCheckpoint(Checkpoint.trainData)
+
+        @writer.writeBlob
+        def _():
+
+            simData = train.navigationState.data
+
+            @writer.writeBlob
+            def _():
+
+                writer.writeString(simData.color)
+                writer.writeFloat(simData.chunkProgress)
+                writer.writeInt1(simData.state.value)
+                writer.writeBool(simData.upsideDown)
+                writer.writeInt(len(simData.wagons))
+
+                for wagon in simData.wagons:
+                    serializer.serialize(writer,wagon.incomingPosition)
+                    serializer.serialize(writer,wagon.outgoingPosition)
+                    writer.writeInt1(wagon.incomingDirection.value)
+                    writer.writeInt1(wagon.outgoingDirection.value)
+                    writer.writeBool(wagon.upsideDown)
+                    writer.writeInt1(wagon.state.value)
+                    writer.writeFloat(wagon.travelledChunksInsideJump)
+                    writer.writeFloat(wagon.jumpLength)
+
+                writer.writeFloat(simData.velocity)
+                writer.writeFloat(simData.maxSpeedAhead)
+                writer.writeFloat(simData.acceleration)
+                writer.writeFloat(simData.chunksUntilMaxSpeedShouldBeRespected)
+                writer.writeBool(simData.isStopped)
+                writer.writeBool(simData.wasStoppedInCurrentChunk)
+                serializer.serialize(writer,simData.stopTime)
+
+                writer.writeInt(len(train.navigationState.occupiedRails))
+                for rail in train.navigationState.occupiedRails:
+                    serializer.serialize(writer,rail.coordinate)
+                    writer.writeBool(rail.upsideDown)
+
+            serializer.serialize(writer,train.parentProducerPosition)
+
+            for cargoType in ("fluid","shape"):
+                @writer.writeBlob
+                def _():
+                    filteredCargo = []
+                    for i,wagon in enumerate(simData.wagons):
+                        if wagon.cargoType == cargoType:
+                            filteredCargo.append((i,wagon.cargo))
+                    writer.writeInt(len(filteredCargo))
+                    for wagonIndex,cargo in filteredCargo:
+                        writer.writeInt(wagonIndex)
+                        serializer.serialize(writer,cargo)
 
 #endregion
 
@@ -327,7 +572,7 @@ class FilePaths(enum.Enum):
 class SavegameMap:
     temp_simulationState:bytes
     placedIslands:list[PlacedIsland]
-    temp_trains:bytes
+    trains:TrainsSimulation
     temp_resourceChunks:bytes
     temp_cargo:bytes
 
@@ -436,12 +681,20 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
         except InvalidSerializedData as e:
             raise InvalidSerializedData(f"Error while reading island state bundle #{bundleIndex} : {e}")
 
+    try:
+        decodedTrains = _decodeTrains(
+            BinaryStreamReaderWithStringLUT(trainsRaw,useCheckpoints,stringsLUT),
+            serializer
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading trains : {e}")
+
     # temp
     return Savegame(
         SavegameMap(
             simulationStateRaw,
             decodedIslands,
-            trainsRaw,
+            decodedTrains,
             resourceChunksRaw,
             cargoRaw
         ),
@@ -461,6 +714,7 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         tempScenario.researchConfig.shapesConfig,
         tempScenario.researchConfig.colorScheme
     )
+    stringsLUT = savegame.temp_stringsLUT
 
     islandsToEncode = savegame.map.placedIslands.copy()
     maxIslandsPerBundle = math.ceil(4**math.log10(len(islandsToEncode)))
@@ -481,20 +735,14 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
 
         if (len(curBundle) >= maxIslandsPerBundle) or (lastBundle and (len(curBundle) > 0)):
 
-            placedIslandsWriter = BinaryStreamWriterWithStringLUT(
-                useCheckpoints,
-                savegame.temp_stringsLUT
-            )
+            placedIslandsWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
             _encodeIslands(curBundle,placedIslandsWriter,serializer)
             encodedPlacedIslands.append((
                 curBundleIndex,
                 placedIslandsWriter.toBytes()
             ))
 
-            islandStatesWriter = BinaryStreamWriterWithStringLUT(
-                useCheckpoints,
-                savegame.temp_stringsLUT
-            )
+            islandStatesWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
             _encodeIslandStates(curBundle,islandStatesWriter,serializer)
             encodedIslandAndBuildingStates.append((
                 curBundleIndex,
@@ -503,6 +751,10 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
 
             curBundleIndex += 1
             curBundle.clear()
+
+    trainsWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
+    _encodeTrains(savegame.map.trains,trainsWriter,serializer)
+    encodedTrains = trainsWriter.toBytes()
 
     encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
     savegame.temp_stringsLUT.serialize(encodedStringsLUT)
@@ -514,7 +766,7 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         f.writestr(FilePaths.research,savegame.temp_research)
         f.writestr(FilePaths.player,savegame.temp_player)
         f.writestr(FilePaths.simulationState,savegame.map.temp_simulationState)
-        f.writestr(FilePaths.trains,savegame.map.temp_trains)
+        f.writestr(FilePaths.trains,encodedTrains)
         f.writestr(FilePaths.resourceChunks,savegame.map.temp_resourceChunks)
         f.writestr(FilePaths.cargo,savegame.map.temp_cargo)
         for fileList,prefix,suffix in [

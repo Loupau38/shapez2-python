@@ -204,14 +204,14 @@ class FluidPackageItem(GenericBeltItem):
     size:FluidUnit
 
 @dataclass
-class ShapePackageOnTrack(GenericBeltItem):
-    amount:int
-    shape:ShapeItem|None
+class PackageOnTrack[T](GenericBeltItem):
+    container:T
 
 @dataclass
-class FluidPackageOnTrack(GenericBeltItem):
+class CargoPackage[T]:
     amount:int
-    fluid:GenericFluid|None
+    item:T|None
+    _itemType:type[T] # not ingame, needed here because item can be None
 
 class GenericSignal: ...
 
@@ -314,6 +314,28 @@ class RailConnectionColorFilter:
         # but I don't want to deal with binary not on arbitrary sized ints
         if self.containsColor(colorIndex):
             self.mask -= 1 << colorIndex
+
+@dataclass
+class SidedCoordinate:
+    coordinate:GlobalChunkCoordinate
+    upsideDown:bool
+
+class ChunkDirection(enum.Enum):
+    east = 0
+    south = 1
+    west = 2
+    north = 3
+    up = 4
+    down = 5
+
+@dataclass
+class LayeredWagonCargo[T]:
+    containers:list[T]
+
+@dataclass
+class CargoContainer[T]:
+    packages:list[CargoPackage[T]]
+    maxPackages:int
 
 #endregion
 
