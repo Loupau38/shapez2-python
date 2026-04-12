@@ -7,6 +7,7 @@ from collections.abc import Callable
 import typing
 import inspect
 import types
+import struct
 
 def checkpointHash(checkpointId:str) -> int:
     h = fixedint.UInt32(523423)
@@ -76,6 +77,9 @@ class BinaryStreamReader:
 
     def readInt1(self) -> int:
         return self.read(1)[0]
+
+    def readFloat(self) -> float:
+        return struct.unpack("<f",self.read(4))[0]
 
     def readString(self) -> str|None:
         l = self.readShort()
@@ -150,6 +154,9 @@ class BinaryStreamWriter:
 
     def writeInt1(self,v:int) -> None:
         self.write(bytes([v]))
+
+    def writeFloat(self,v:float) -> None:
+        self.write(struct.pack("<f",v))
 
     def writeString(self,string:str|None) -> None:
         if string is None:

@@ -19,21 +19,9 @@ import json
 import math
 import datetime
 
-class FilePaths(enum.Enum):
-    stringsLUT = "strings.bin"
-    statistics = "statistics.bin"
-    saveInfo = "savegame.json"
-    research = "research.json"
-    player = "local-player.json"
-    mainMap = "maps/main/"
-    simulationState = mainMap + "simulation/state.bin"
-    placedIslandsPrefix = mainMap + "islands/"
-    placedIslandsSuffix = ".bin"
-    islandAndBuildingStatesPrefix = mainMap + "buildings/"
-    islandAndBuildingStatesSuffix = ".bin"
-    trains = mainMap + "trains.bin"
-    resourceChunks = mainMap + "resource-chunks.bin"
-    cargo = mainMap + "cargo.bin"
+
+
+#region map
 
 @dataclass
 class PlacedBuilding:
@@ -51,32 +39,6 @@ class PlacedIsland:
     configuration:gameObjects.GenericIslandConfig|None
     placedBuildings:list[PlacedBuilding]
     simulationState:gameObjects.GenericSimulationState|None=None
-
-@dataclass
-class SavegameMap:
-    temp_simulationState:bytes
-    placedIslands:list[PlacedIsland]
-    temp_trains:bytes
-    temp_resourceChunks:bytes
-    temp_cargo:bytes
-
-@dataclass
-class Savegame:
-    map:SavegameMap
-    temp_stringsLUT:StringLUTReadWrite # remove when all other parts are done
-    temp_statistics:bytes
-    temp_info:bytes
-    temp_research:bytes
-    temp_player:bytes
-
-_NUMBERS = [str(i) for i in range(10)]
-def _isNumber(string:str) -> bool:
-    if string == "":
-        return False
-    for char in string:
-        if char not in _NUMBERS:
-            return False
-    return True
 
 def _decodeBuildings(
     reader:BinaryStreamReaderWithStringLUT,
@@ -229,6 +191,164 @@ def _decodeIslandStates(
         except InvalidSerializedData as e:
             raise InvalidSerializedData(f"Error while reading building state #{buildingIndex} : {e}")
 
+def _encodeBuildings(
+    buildings:list[PlacedBuilding],
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeCheckpoint(Checkpoint.buildings)
+    writer.writeInt(len(buildings))
+
+    for building in buildings:
+
+        writer.writeCheckpoint(Checkpoint.building)
+        serializer.serialize(writer,building.pos)
+        serializer.serialize(writer,building.rotation)
+        serializer.serialize(writer,building.type)
+        if building.configuration is None:
+            writer.writeBool(False)
+        else:
+            writer.writeBool(True)
+            @writer.writeBlob
+            def _():
+                serializer.serialize(writer,building.configuration) # no type override
+
+def _encodeIslands(
+    islands:list[PlacedIsland],
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeInt(len(islands))
+
+    for island in islands:
+
+        writer.writeCheckpoint(Checkpoint.island)
+        serializer.serialize(writer,island.pos)
+        serializer.serialize(writer,island.type)
+        serializer.serialize(writer,island.rotation)
+
+        @writer.writeBlob
+        def _():
+
+            if island.configuration is None:
+                writer.writeBool(False)
+            else:
+                writer.writeBool(True)
+                @writer.writeBlob
+                def _():
+                    serializer.serialize(writer,island.configuration) # no type override
+
+            @writer.writeBlob
+            def _():
+                _encodeBuildings(island.placedBuildings,writer,serializer)
+
+def _encodeIslandStates(
+    islands:list[PlacedIsland],
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeInt(len(islands))
+    placedBuildings:list[tuple[gameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
+
+    for island in islands:
+
+        serializer.serialize(writer,island.pos)
+        serializer.serialize(writer,island.type)
+
+        @writer.writeBlob
+        def _():
+            serializer.serialize(
+                writer,
+                island.simulationState,
+                gameObjects.GenericSimulationState
+            )
+
+        placedBuildings.extend(
+            (b.pos.toGlobalTile(island.pos),b)
+            for b in island.placedBuildings
+        )
+
+    writer.writeInt(len(placedBuildings))
+
+    for buildingPos,building in placedBuildings:
+
+        serializer.serialize(writer,buildingPos)
+        serializer.serialize(writer,building.type)
+
+        @writer.writeBlob
+        def _():
+            serializer.serialize(
+                writer,
+                building.simulationState,
+                gameObjects.GenericSimulationState
+            )
+
+#endregion
+
+
+
+#region trains
+
+class TrainsSimulation:
+    pass
+
+def _decodeTrains(
+    reader:BinaryStreamReaderWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> TrainsSimulation:
+    pass
+
+#endregion
+
+
+
+#region savegame
+
+class FilePaths(enum.Enum):
+    stringsLUT = "strings.bin"
+    statistics = "statistics.bin"
+    saveInfo = "savegame.json"
+    research = "research.json"
+    player = "local-player.json"
+    mainMap = "maps/main/"
+    simulationState = mainMap + "simulation/state.bin"
+    placedIslandsPrefix = mainMap + "islands/"
+    placedIslandsSuffix = ".bin"
+    islandAndBuildingStatesPrefix = mainMap + "buildings/"
+    islandAndBuildingStatesSuffix = ".bin"
+    trains = mainMap + "trains.bin"
+    resourceChunks = mainMap + "resource-chunks.bin"
+    cargo = mainMap + "cargo.bin"
+
+@dataclass
+class SavegameMap:
+    temp_simulationState:bytes
+    placedIslands:list[PlacedIsland]
+    temp_trains:bytes
+    temp_resourceChunks:bytes
+    temp_cargo:bytes
+
+@dataclass
+class Savegame:
+    map:SavegameMap
+    temp_stringsLUT:StringLUTReadWrite # remove when all other parts are done
+    temp_statistics:bytes
+    temp_info:bytes
+    temp_research:bytes
+    temp_player:bytes
+
+_NUMBERS = [str(i) for i in range(10)]
+def _isNumber(string:str) -> bool:
+    if string == "":
+        return False
+    for char in string:
+        if char not in _NUMBERS:
+            return False
+    return True
+
 def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
     with zipfile.ZipFile(file,"r") as f:
@@ -332,101 +452,6 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
         playerRaw
     )
 
-def _encodeBuildings(
-    buildings:list[PlacedBuilding],
-    writer:BinaryStreamWriterWithStringLUT,
-    serializer:GameObjectsSerializer
-) -> None:
-
-    writer.writeCheckpoint(Checkpoint.buildings)
-    writer.writeInt(len(buildings))
-
-    for building in buildings:
-
-        writer.writeCheckpoint(Checkpoint.building)
-        serializer.serialize(writer,building.pos)
-        serializer.serialize(writer,building.rotation)
-        serializer.serialize(writer,building.type)
-        if building.configuration is None:
-            writer.writeBool(False)
-        else:
-            writer.writeBool(True)
-            @writer.writeBlob
-            def _():
-                serializer.serialize(writer,building.configuration) # no type override
-
-def _encodeIslands(
-    islands:list[PlacedIsland],
-    writer:BinaryStreamWriterWithStringLUT,
-    serializer:GameObjectsSerializer
-) -> None:
-
-    writer.writeInt(len(islands))
-
-    for island in islands:
-
-        writer.writeCheckpoint(Checkpoint.island)
-        serializer.serialize(writer,island.pos)
-        serializer.serialize(writer,island.type)
-        serializer.serialize(writer,island.rotation)
-
-        @writer.writeBlob
-        def _():
-
-            if island.configuration is None:
-                writer.writeBool(False)
-            else:
-                writer.writeBool(True)
-                @writer.writeBlob
-                def _():
-                    serializer.serialize(writer,island.configuration) # no type override
-
-            @writer.writeBlob
-            def _():
-                _encodeBuildings(island.placedBuildings,writer,serializer)
-
-def _encodeIslandStates(
-    islands:list[PlacedIsland],
-    writer:BinaryStreamWriterWithStringLUT,
-    serializer:GameObjectsSerializer
-) -> None:
-
-    writer.writeInt(len(islands))
-    placedBuildings:list[tuple[gameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
-
-    for island in islands:
-
-        serializer.serialize(writer,island.pos)
-        serializer.serialize(writer,island.type)
-
-        @writer.writeBlob
-        def _():
-            serializer.serialize(
-                writer,
-                island.simulationState,
-                gameObjects.GenericSimulationState
-            )
-
-        placedBuildings.extend(
-            (b.pos.toGlobalTile(island.pos),b)
-            for b in island.placedBuildings
-        )
-
-    writer.writeInt(len(placedBuildings))
-
-    for buildingPos,building in placedBuildings:
-
-        serializer.serialize(writer,buildingPos)
-        serializer.serialize(writer,building.type)
-
-        @writer.writeBlob
-        def _():
-            serializer.serialize(
-                writer,
-                building.simulationState,
-                gameObjects.GenericSimulationState
-            )
-
 def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> None:
 
     tempSaveInfo = json.loads(savegame.temp_info)
@@ -507,7 +532,11 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
             for i,data in fileList:
                 f.writestr(prefix.value+str(i)+suffix.value,data)
 
+#endregion
 
+
+
+# region files
 
 def _getLatestBackupPathAndNum(folderPath:str) -> tuple[str,int]:
     latestBackupNum = 0
@@ -541,3 +570,5 @@ def getNextBackupPath(folderPath:str) -> str:
         )
         + ".spz2"
     )
+
+#endregion
