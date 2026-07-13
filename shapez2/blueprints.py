@@ -604,7 +604,7 @@ def _migrationV1057(entry:dict) -> None:
             if not shape.startswith(b"shape:"):
                 raise BlueprintError("No 'shape:' prefix in shape generator")
             return bytes([1,1]) + utils.encodeStringWithLen(
-                shape.removeprefix(b"shape:").replace(b"k",b"u")
+                shape.removeprefix(b"shape:").replace(b"k",b"u") # TODO: k now exists
             )
 
         def fluidGen(data:bytes) -> bytes:

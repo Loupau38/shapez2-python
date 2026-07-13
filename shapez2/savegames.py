@@ -1,4 +1,4 @@
-from . import buildings, gameObjects, utils, islands, _gameObjectsSerializer, research
+from . import buildings, gameObjects, utils, islands, _gameObjectsSerializer, research, savegameObjects
 from ._gameObjectsSerializer import (
     Checkpoint,
     BinaryStreamReader,
@@ -26,19 +26,19 @@ import datetime
 @dataclass
 class PlacedBuilding:
     type:buildings.BuildingInternalVariant
-    pos:gameObjects.IslandTileCoordinate
+    pos:savegameObjects.IslandTileCoordinate
     rotation:utils.Rotation
     configuration:gameObjects.GenericBuildingConfig|None
-    simulationState:gameObjects.GenericSimulationState|None=None
+    simulationState:savegameObjects.GenericSimulationState|None=None
 
 @dataclass
 class PlacedIsland:
     type:islands.Island
-    pos:gameObjects.GlobalChunkCoordinate
+    pos:savegameObjects.GlobalChunkCoordinate
     rotation:utils.Rotation
     configuration:gameObjects.GenericIslandConfig|None
     placedBuildings:list[PlacedBuilding]
-    simulationState:gameObjects.GenericSimulationState|None=None
+    simulationState:savegameObjects.GenericSimulationState|None=None
 
 def _decodeBuildings(
     reader:BinaryStreamReaderWithStringLUT,
@@ -51,7 +51,7 @@ def _decodeBuildings(
     def decodeBuilding() -> None:
 
         reader.assertCheckpoint(Checkpoint.building)
-        buildingPos = serializer.deserialize(reader,gameObjects.IslandTileCoordinate)
+        buildingPos = serializer.deserialize(reader,savegameObjects.IslandTileCoordinate)
         buildingRotation = serializer.deserialize(reader,utils.Rotation)
         buildingDefinition = serializer.deserialize(reader,buildings.BuildingInternalVariant)
         buildingConfig = None
@@ -92,7 +92,7 @@ def _decodeIslands(
     def decodeIsland() -> None:
 
         reader.assertCheckpoint(Checkpoint.island)
-        islandPos = serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate)
+        islandPos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
         islandDefinition = serializer.deserialize(reader,islands.Island)
         islandRotation = serializer.deserialize(reader,utils.Rotation)
         islandConfig = None
@@ -137,13 +137,13 @@ def _decodeIslands(
 def _decodeIslandStates(
     reader:BinaryStreamReaderWithStringLUT,
     serializer:GameObjectsSerializer,
-    islandsMap:dict[gameObjects.GlobalChunkCoordinate,PlacedIsland],
-    buildingsMap:dict[gameObjects.GlobalTileCoordinate,PlacedBuilding]
+    islandsMap:dict[savegameObjects.GlobalChunkCoordinate,PlacedIsland],
+    buildingsMap:dict[savegameObjects.GlobalTileCoordinate,PlacedBuilding]
 ) -> None:
 
     def decodeIsland() -> None:
 
-        islandPos = serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate)
+        islandPos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
         islandDefinition = serializer.deserialize(reader,islands.Island)
 
         placedIsland = islandsMap.get(islandPos)
@@ -158,11 +158,11 @@ def _decodeIslandStates(
 
         @reader.readBlob
         def _():
-            placedIsland.simulationState = serializer.deserialize(reader,gameObjects.GenericSimulationState)
+            placedIsland.simulationState = serializer.deserialize(reader,savegameObjects.GenericSimulationState)
 
     def decodeBuilding() -> None:
 
-        buildingPos = serializer.deserialize(reader,gameObjects.GlobalTileCoordinate)
+        buildingPos = serializer.deserialize(reader,savegameObjects.GlobalTileCoordinate)
         buildingDefinition = serializer.deserialize(reader,buildings.BuildingInternalVariant)
 
         placedBuilding = buildingsMap.get(buildingPos)
@@ -177,7 +177,7 @@ def _decodeIslandStates(
 
         @reader.readBlob
         def _():
-            placedBuilding.simulationState = serializer.deserialize(reader,gameObjects.GenericSimulationState)
+            placedBuilding.simulationState = serializer.deserialize(reader,savegameObjects.GenericSimulationState)
 
     for islandIndex in range(reader.readInt()):
         try:
@@ -251,7 +251,7 @@ def _encodeIslandStates(
 ) -> None:
 
     writer.writeInt(len(islands))
-    placedBuildings:list[tuple[gameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
+    placedBuildings:list[tuple[savegameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
 
     for island in islands:
 
@@ -263,7 +263,7 @@ def _encodeIslandStates(
             serializer.serialize(
                 writer,
                 island.simulationState,
-                gameObjects.GenericSimulationState
+                savegameObjects.GenericSimulationState
             )
 
         placedBuildings.extend(
@@ -283,7 +283,7 @@ def _encodeIslandStates(
             serializer.serialize(
                 writer,
                 building.simulationState,
-                gameObjects.GenericSimulationState
+                savegameObjects.GenericSimulationState
             )
 
 #endregion
@@ -305,10 +305,10 @@ class WagonState(enum.Enum):
 
 @dataclass
 class WagonNavigationData:
-    incomingPosition:gameObjects.GlobalChunkCoordinate
-    outgoingPosition:gameObjects.GlobalChunkCoordinate
-    incomingDirection:gameObjects.ChunkDirection
-    outgoingDirection:gameObjects.ChunkDirection
+    incomingPosition:savegameObjects.GlobalChunkCoordinate
+    outgoingPosition:savegameObjects.GlobalChunkCoordinate
+    incomingDirection:savegameObjects.ChunkDirection
+    outgoingDirection:savegameObjects.ChunkDirection
     upsideDown:bool
     state:WagonState
     travelledChunksInsideJump:float
@@ -316,8 +316,8 @@ class WagonNavigationData:
 
     # ingame this is stored elsewhere
     # but moved here for convenience
-    cargo:gameObjects.LayeredWagonCargo[
-        gameObjects.CargoContainer[
+    cargo:savegameObjects.LayeredWagonCargo[
+        savegameObjects.CargoContainer[
             gameObjects.ShapeItem # ShapeId ingame
             | gameObjects.GenericFluid # FluidId ingame
         ]
@@ -342,17 +342,17 @@ class TrainSimulationData:
     chunksUntilMaxSpeedShouldBeRespected:float
     isStopped:bool
     wasStoppedInCurrentChunk:bool
-    stopTime:gameObjects.SimulationTicks
+    stopTime:savegameObjects.SimulationTicks
 
 @dataclass
 class TrainNavigationState:
     data:TrainSimulationData
-    occupiedRails:list[gameObjects.SidedCoordinate]
+    occupiedRails:list[savegameObjects.SidedCoordinate]
 
 @dataclass
 class TrainState:
     navigationState:TrainNavigationState
-    parentProducerPosition:gameObjects.GlobalChunkCoordinate
+    parentProducerPosition:savegameObjects.GlobalChunkCoordinate
 
 @dataclass
 class TrainsSimulation:
@@ -397,10 +397,10 @@ def _decodeTrains(
                     for i in range(reader.readInt()):
                         try:
                             wagons.append(WagonNavigationData(
-                                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
-                                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
-                                getSerializedEnum(gameObjects.ChunkDirection),
-                                getSerializedEnum(gameObjects.ChunkDirection),
+                                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
+                                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
+                                getSerializedEnum(savegameObjects.ChunkDirection),
+                                getSerializedEnum(savegameObjects.ChunkDirection),
                                 reader.readBool(),
                                 getSerializedEnum(WagonState),
                                 reader.readFloat(),
@@ -423,11 +423,11 @@ def _decodeTrains(
                         reader.readFloat(),
                         reader.readBool(),
                         reader.readBool(),
-                        serializer.deserialize(reader,gameObjects.SimulationTicks)
+                        serializer.deserialize(reader,savegameObjects.SimulationTicks)
                     ),
                     [
-                        gameObjects.SidedCoordinate(
-                            serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate),
+                        savegameObjects.SidedCoordinate(
+                            serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
                             reader.readBool()
                         )
                         for _ in range(reader.readInt())
@@ -436,7 +436,7 @@ def _decodeTrains(
 
             curTrain = TrainState(
                 navState,
-                serializer.deserialize(reader,gameObjects.GlobalChunkCoordinate)
+                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
             )
 
             for text,dataType in (
@@ -454,8 +454,8 @@ def _decodeTrains(
                             print(f"TODO : check wagon index range : {wagonIndex}")
                             decodedCargo = serializer.deserialize(
                                 reader,
-                                gameObjects.LayeredWagonCargo[
-                                    gameObjects.CargoContainer[
+                                savegameObjects.LayeredWagonCargo[
+                                    savegameObjects.CargoContainer[
                                         dataType
                                     ]
                                 ]
@@ -659,7 +659,7 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
     islandsMap = {i.pos:i for i in decodedIslands}
 
-    buildingsMap:dict[gameObjects.GlobalTileCoordinate,PlacedBuilding] = {}
+    buildingsMap:dict[savegameObjects.GlobalTileCoordinate,PlacedBuilding] = {}
     for decodedIsland in decodedIslands:
         for decodedBuilding in decodedIsland.placedBuildings:
             buildingsMap[
