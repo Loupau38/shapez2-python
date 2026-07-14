@@ -55,7 +55,7 @@ class Pos:
     z:int=0
 
     def __str__(self) -> str:
-        return f"Pos({self.x},{self.y},{self.z})"
+        return f"{type(self).__name__}({self.x},{self.y},{self.z})"
 
     def __repr__(self) -> str:
         return str(self)

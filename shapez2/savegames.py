@@ -550,6 +550,135 @@ def _encodeTrains(
 
 
 
+#region cargo
+
+@dataclass
+class CargoExchangingController[
+    TWagonData,
+    TLoader:savegameObjects.GenericCargoExchanger[TWagonData],
+    TUnloader:savegameObjects.GenericCargoExchanger[TWagonData],
+    TTransferrer:savegameObjects.GenericCargoTransferrer[TWagonData]
+]:
+    cargoLoaderMap:dict[savegameObjects.GlobalChunkCoordinate,TLoader]
+    cargoUnloaderMap:dict[savegameObjects.GlobalChunkCoordinate,TUnloader]
+    cargoTransferrerMap:dict[savegameObjects.GlobalChunkCoordinate,TTransferrer]
+
+@dataclass
+class CargoExchangingOrchestrator:
+    shapeCargoLoaderUnloader:CargoExchangingController[
+        savegameObjects.LayeredWagonCargo[savegameObjects.CargoContainer[gameObjects.ShapeItem]], # ShapeId ingame
+        savegameObjects.TrainCargoLoaderSimulation[gameObjects.ShapeItem], # ShapeId ingame
+        savegameObjects.TrainCargoUnloaderSimulation[gameObjects.ShapeItem], # ShapeId ingame
+        savegameObjects.TrainCargoTransferrerSimulation[gameObjects.ShapeItem] # ShapeId ingame
+    ]
+    fluidCargoLoaderUnloader:CargoExchangingController[
+        savegameObjects.LayeredWagonCargo[savegameObjects.CargoContainer[gameObjects.GenericFluid]], # FluidId ingame
+        savegameObjects.TrainCargoLoaderSimulation[gameObjects.GenericFluid], # FluidId ingame
+        savegameObjects.TrainCargoUnloaderSimulation[gameObjects.GenericFluid], # FluidId ingame
+        savegameObjects.TrainCargoTransferrerSimulation[gameObjects.GenericFluid] # FluidId ingame
+    ]
+
+def _decodeCargo(
+    reader:BinaryStreamReaderWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> CargoExchangingOrchestrator:
+
+    cargo = CargoExchangingOrchestrator(
+        CargoExchangingController({},{},{}),
+        CargoExchangingController({},{},{})
+    )
+
+    @reader.readBlob
+    def _():
+
+        for simType,stateType,cargoMaps,islandName in [
+            (
+                savegameObjects.TrainCargoLoaderSimulation,
+                savegameObjects.TrainCargoExchangerState,
+                (
+                    cargo.shapeCargoLoaderUnloader.cargoLoaderMap,
+                    cargo.fluidCargoLoaderUnloader.cargoLoaderMap
+                ),
+                "loader"
+            ),
+            (
+                savegameObjects.TrainCargoUnloaderSimulation,
+                savegameObjects.TrainCargoExchangerState,
+                (
+                    cargo.shapeCargoLoaderUnloader.cargoUnloaderMap,
+                    cargo.fluidCargoLoaderUnloader.cargoUnloaderMap
+                ),
+                "unloader"
+            ),
+            (
+                savegameObjects.TrainCargoTransferrerSimulation,
+                savegameObjects.TrainCargoTransferState,
+                (
+                    cargo.shapeCargoLoaderUnloader.cargoTransferrerMap,
+                    cargo.fluidCargoLoaderUnloader.cargoTransferrerMap
+                ),
+                "transferrer"
+            )
+        ]:
+
+            for cargoMap,cargoType,cargoName in [
+                (cargoMaps[0],gameObjects.ShapeItem,"shape"),
+                (cargoMaps[1],gameObjects.GenericFluid,"fluid")
+            ]:
+
+                for i in range(reader.readInt()):
+
+                    try:
+
+                        pos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
+
+                        @reader.readBlob
+                        def _():
+                            cargoMap[pos] = simType(serializer.deserialize(reader,stateType[cargoType]))
+
+                    except InvalidSerializedData as e:
+                        raise InvalidSerializedData(f"Error while reading {cargoName} {islandName} #{i} : {e}")
+
+    return cargo
+
+def _encodeCargo(
+    cargo:CargoExchangingOrchestrator,
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    @writer.writeBlob
+    def _():
+
+        for cargoMap in [
+            cargo.shapeCargoLoaderUnloader.cargoLoaderMap,
+            cargo.fluidCargoLoaderUnloader.cargoLoaderMap,
+            cargo.shapeCargoLoaderUnloader.cargoUnloaderMap,
+            cargo.fluidCargoLoaderUnloader.cargoUnloaderMap,
+            cargo.shapeCargoLoaderUnloader.cargoTransferrerMap,
+            cargo.fluidCargoLoaderUnloader.cargoTransferrerMap
+        ]:
+
+            cargoMap:dict[
+                savegameObjects.GlobalChunkCoordinate,
+                savegameObjects.TrainCargoLoaderSimulation
+                | savegameObjects.TrainCargoUnloaderSimulation
+                | savegameObjects.TrainCargoTransferrerSimulation
+            ]
+
+            writer.writeInt(len(cargoMap))
+            for pos,sim in cargoMap.items():
+                serializer.serialize(writer,pos)
+                @writer.writeBlob
+                def _():
+                    # contained type for TrainCargoExchangerState and
+                    # TrainCargoTransferState ignored on serialization
+                    serializer.serialize(writer,sim.state)
+
+#endregion
+
+
+
 #region savegame
 
 class FilePaths(enum.Enum):
@@ -574,7 +703,7 @@ class SavegameMap:
     placedIslands:list[PlacedIsland]
     trains:TrainsSimulation
     temp_resourceChunks:bytes
-    temp_cargo:bytes
+    cargo:CargoExchangingOrchestrator
 
 @dataclass
 class Savegame:
@@ -689,6 +818,14 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while reading trains : {e}")
 
+    try:
+        decodedCargo = _decodeCargo(
+            BinaryStreamReaderWithStringLUT(cargoRaw,useCheckpoints,stringsLUT),
+            serializer
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading cargo : {e}")
+
     # temp
     return Savegame(
         SavegameMap(
@@ -696,7 +833,7 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             decodedIslands,
             decodedTrains,
             resourceChunksRaw,
-            cargoRaw
+            decodedCargo
         ),
         stringsLUT,
         statisticsRaw,
@@ -756,6 +893,10 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     _encodeTrains(savegame.map.trains,trainsWriter,serializer)
     encodedTrains = trainsWriter.toBytes()
 
+    cargoWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
+    _encodeCargo(savegame.map.cargo,cargoWriter,serializer)
+    encodedCargo = cargoWriter.toBytes()
+
     encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
     savegame.temp_stringsLUT.serialize(encodedStringsLUT)
 
@@ -768,7 +909,7 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         f.writestr(FilePaths.simulationState,savegame.map.temp_simulationState)
         f.writestr(FilePaths.trains,encodedTrains)
         f.writestr(FilePaths.resourceChunks,savegame.map.temp_resourceChunks)
-        f.writestr(FilePaths.cargo,savegame.map.temp_cargo)
+        f.writestr(FilePaths.cargo,encodedCargo)
         for fileList,prefix,suffix in [
             (
                 encodedPlacedIslands,

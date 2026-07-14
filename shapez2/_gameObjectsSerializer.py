@@ -9,6 +9,8 @@ import inspect
 import types
 import struct
 
+#region binary data
+
 def checkpointHash(checkpointId:str) -> int:
     h = fixedint.UInt32(523423)
     for c in checkpointId:
@@ -248,6 +250,12 @@ class BinaryStreamWriterWithStringLUT(BinaryStreamWriter):
     def writeString(self,string:str|None) -> None:
         self.writeInt(self._stringLUT.getIndex(string))
 
+#endregion
+
+
+
+#region polymorphic
+
 def serializationId(id:str):
     def wrapper(cls):
         # stop type hints from thinking that `cls` is strictly
@@ -319,6 +327,16 @@ class PolymorphicSerializer[T]:
         def _():
             self.serializer.serialize(writer,obj)
 
+#endregion
+
+
+
+#region special
+
+# check for None not included so type hint still discards None from deduced type
+def needsContainedType(cls:type) -> typing.NoReturn:
+    raise ValueError(f"{cls.__name__} needs a contained type")
+
 class GameObjectsSerializer:
 
     def __init__(
@@ -366,6 +384,13 @@ class GameObjectsSerializer:
             self.colorSchemes[0]
         )
 
+
+#endregion
+
+
+
+#region deserialization
+
     def _autoDeserialize[T](self,reader:BinaryStreamReader,into:type[T]) -> T:
         args = []
         for attrType in inspect.get_annotations(into).values():
@@ -397,7 +422,7 @@ class GameObjectsSerializer:
             containedType = typing.get_args(into)[0]
             into = typeOrigin
 
-        # general game objects
+#region general game objects
 
         if into == savegameObjects.GlobalChunkCoordinate:
             return savegameObjects.GlobalChunkCoordinate(
@@ -423,7 +448,8 @@ class GameObjectsSerializer:
         if into == utils.Rotation:
             return utils.Rotation(reader.readInt1())
 
-        # game objects for config
+#endregion
+#region objects for config
 
         if into == gameObjects.GenericSignal:
             signalType = reader.readInt1()
@@ -494,7 +520,7 @@ class GameObjectsSerializer:
 
         if into == gameObjects.CargoPackage:
             if containedType is None:
-                raise ValueError(f"{gameObjects.CargoPackage.__name__} needs a contained type")
+                needsContainedType(gameObjects.CargoPackage)
             amount = reader.readShort()
             return gameObjects.CargoPackage(
                 amount,
@@ -544,7 +570,8 @@ class GameObjectsSerializer:
         if into == gameObjects.GlobalSignalReceiverConfig:
             return self._autoDeserialize(reader,gameObjects.GlobalSignalReceiverConfig)
 
-        # misc
+#endregion
+#region misc
 
         if into == islands.Island:
             islandId = reader.readString()
@@ -562,7 +589,7 @@ class GameObjectsSerializer:
 
         if into == savegameObjects.LayeredWagonCargo:
             if containedType is None:
-                raise ValueError(f"{savegameObjects.LayeredWagonCargo.__name__} needs a contained type")
+                needsContainedType(savegameObjects.LayeredWagonCargo)
             return savegameObjects.LayeredWagonCargo([
                 self.deserialize(reader,containedType)
                 for _ in range(reader.readInt1())
@@ -570,7 +597,7 @@ class GameObjectsSerializer:
 
         if into == savegameObjects.CargoContainer:
             if containedType is None:
-                raise ValueError(f"{savegameObjects.CargoContainer.__name__} needs a contained type")
+                needsContainedType(savegameObjects.CargoContainer)
             numPackages = reader.readShort()
             maxPackages = reader.readShort()
             return savegameObjects.CargoContainer(
@@ -581,7 +608,8 @@ class GameObjectsSerializer:
                 maxPackages
             )
 
-        # simulation states
+#endregion
+#region simulation states
 
         if into == savegameObjects.SimulationSteps:
             return savegameObjects.SimulationSteps(reader.readLong())
@@ -701,7 +729,7 @@ class GameObjectsSerializer:
 
         if into == savegameObjects.BundleState:
             if containedType is None:
-                raise ValueError(f"{savegameObjects.BundleState.__name__} needs a contained type")
+                needsContainedType(savegameObjects.BundleState)
             return savegameObjects.BundleState([
                 self.deserialize(reader,containedType)
                 for _ in range(savegameObjects.BundleState.ENTRIES_PER_BUNDLE)
@@ -742,9 +770,7 @@ class GameObjectsSerializer:
         if into == savegameObjects.SimulationBufferState:
 
             if containedType is None:
-                raise ValueError(
-                    f"{savegameObjects.SimulationBufferState.__name__} needs a contained type"
-                )
+                needsContainedType(savegameObjects.SimulationBufferState)
 
             numItems = reader.readInt()
             if numItems < 0:
@@ -790,7 +816,82 @@ class GameObjectsSerializer:
         if into == savegameObjects.FluidPackageLaunchState:
             return self._autoDeserialize(reader,savegameObjects.FluidPackageLaunchState)
 
+        if into == savegameObjects.TrainCargoFillingContainerState:
+            if containedType is None:
+                needsContainedType(savegameObjects.TrainCargoFillingContainerState)
+            return savegameObjects.TrainCargoFillingContainerState(
+                self.deserialize(reader,gameObjects.CargoPackage[containedType])
+            )
 
+        if into == savegameObjects.TrainCargoExchangerState:
+
+            if containedType is None:
+                needsContainedType(savegameObjects.TrainCargoExchangerState)
+
+            numSlots = reader.readInt1()
+            if numSlots != savegameObjects.TrainCargoExchangerState.NUM_LOADING_PATH_SLOTS:
+                raise InvalidSerializedData(
+                    "Unsupported number of loading path slots for "
+                    + savegameObjects.TrainCargoExchangerState.__name__
+                    + f" : {numSlots}"
+                )
+
+            loadingPaths:savegameObjects.BundleState[savegameObjects.BeltPathLaneState]
+
+            @reader.readBlob
+            def _():
+                nonlocal loadingPaths
+                # ingame the deserialization code for the BundleState is duplicated here
+                loadingPaths = self.deserialize(
+                    reader,
+                    savegameObjects.BundleState[savegameObjects.BeltPathLaneState]
+                )
+
+            fillingContainer = [
+                self.deserialize(
+                    reader,
+                    savegameObjects.TrainCargoFillingContainerState[containedType]
+                )
+                for _ in range(savegameObjects.TrainCargoExchangerState.NUM_LAYERS)
+            ]
+
+            cargoOnTrack = [
+                self.deserialize(reader,savegameObjects.BeltPathLaneState)
+                for _ in range(savegameObjects.TrainCargoExchangerState.NUM_LAYERS)
+            ]
+
+            if not reader.readBool():
+                raise InvalidSerializedData(
+                    "Containers on bridge not serialized unsupported for "
+                    + savegameObjects.TrainCargoExchangerState.__name__
+                )
+
+            cargoOnBridge = [
+                self.deserialize(reader,savegameObjects.BeltPathLaneState)
+                for _ in range(savegameObjects.TrainCargoExchangerState.NUM_LAYERS)
+            ]
+
+            return savegameObjects.TrainCargoExchangerState(
+                loadingPaths,
+                fillingContainer,
+                cargoOnTrack,
+                cargoOnBridge
+            )
+
+        if into == savegameObjects.TrainCargoTransferState:
+            # contained type ingored because unused
+            return savegameObjects.TrainCargoTransferState(
+                *[
+                    [
+                        self.deserialize(reader,savegameObjects.BeltPathLaneState)
+                        for _ in range(savegameObjects.TrainCargoTransferState.NUM_LAYERS)
+                    ]
+                    for _ in range(3)
+                ]
+            )
+
+#endregion
+#region simulation states with polymorphic
 
         if into == savegameObjects.GenericSimulationState:
             return self.simulationStateSerializer.deserialize(reader)
@@ -977,6 +1078,13 @@ class GameObjectsSerializer:
 
         raise ValueError(f"Unknown type for deserialization : {into}")
 
+#endregion
+#endregion
+
+
+
+#region serialization
+
     def _autoSerialize(self,writer:BinaryStreamWriter,obj:typing.Any) -> None:
         for attrName,attrType in inspect.get_annotations(type(obj)).items():
             kwargs = {}
@@ -1037,7 +1145,7 @@ class GameObjectsSerializer:
                 typeMatch = funcType
                 func(obj)
 
-        # general game objects
+#region general game objects
 
         @f
         def _(obj:savegameObjects.GlobalChunkCoordinate):
@@ -1061,7 +1169,8 @@ class GameObjectsSerializer:
         def _(obj:utils.Rotation):
             writer.writeInt1(obj.value)
 
-        # game objects for config
+#endregion
+#region objects for config
 
         @f
         def _(obj:gameObjects.GenericSignal):
@@ -1150,6 +1259,7 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:gameObjects.CargoPackage):
+            # contained type is ignored
             writer.writeShort(obj.amount)
             if obj.amount != 0:
                 self.serialize(writer,obj.item,obj._itemType)
@@ -1200,7 +1310,8 @@ class GameObjectsSerializer:
         def _(obj:gameObjects.GlobalSignalReceiverConfig):
             self._autoSerialize(writer,obj)
 
-        # misc
+#endregion
+#region misc
 
         @f
         def _(obj:islands.Island):
@@ -1222,16 +1333,14 @@ class GameObjectsSerializer:
 
         @f
         def _(obj:savegameObjects.CargoContainer):
+            # contained type is ignored because CargoPackage ingores it too
             writer.writeShort(len(obj.packages))
             writer.writeShort(obj.maxPackages)
             for p in obj.packages:
-                self.serialize(
-                    writer,
-                    p,
-                    containedTypeOverride=containedType # intentionally None if no containedType specified
-                )
+                self.serialize(writer,p)
 
-        # simulation states
+#endregion
+#region simulation states
 
         @f
         def _(obj:savegameObjects.SimulationSteps):
@@ -1318,7 +1427,7 @@ class GameObjectsSerializer:
         @f
         def _(obj:savegameObjects.BundleState):
             if containedType is None:
-                raise ValueError(f"{savegameObjects.BundleState.__name__} needs a contained type")
+                needsContainedType(savegameObjects.BundleState)
             if len(obj.entries) != savegameObjects.BundleState.ENTRIES_PER_BUNDLE:
                 raise ValueError(
                     "Invalid number of entries for "
@@ -1355,9 +1464,7 @@ class GameObjectsSerializer:
         @f
         def _(obj:savegameObjects.SimulationBufferState):
             if containedType is None:
-                raise ValueError(
-                    f"{savegameObjects.SimulationBufferState.__name__} needs a contained type"
-                )
+                needsContainedType(savegameObjects.SimulationBufferState)
             writer.writeInt(len(obj.queue))
             @writer.writeBlob
             def _():
@@ -1385,7 +1492,68 @@ class GameObjectsSerializer:
         def _(obj:savegameObjects.FluidPackageLaunchState):
             self._autoSerialize(writer,obj)
 
+        @f
+        def _(obj:savegameObjects.TrainCargoFillingContainerState):
+            # contained type is ignored because CargoPackage ingores it too
+            self.serialize(writer,obj.package)
 
+        @f
+        def _(obj:savegameObjects.TrainCargoExchangerState):
+            # contained type is ignored because TrainCargoFillingContainerState ingores it too
+
+            writer.writeInt1(savegameObjects.TrainCargoExchangerState.NUM_LOADING_PATH_SLOTS)
+            @writer.writeBlob
+            def _():
+                # ingame the serialization code for the BundleState is duplicated here
+                self.serialize(
+                    writer,
+                    obj.loadingPathsStates,
+                    containedTypeOverride=savegameObjects.BeltPathLaneState
+                )
+
+            for states,text in [
+                (obj.trainCargoFillingContainerState,"filling container"),
+                (obj.cargoContainerTracksStates,"cargo on track"),
+                (obj.cargoOnBridge,"cargo on bridge")
+            ]:
+                n = len(states)
+                if n != savegameObjects.TrainCargoExchangerState.NUM_LAYERS:
+                    raise ValueError(
+                        f"Invalid number of {text} states for "
+                        + savegameObjects.TrainCargoExchangerState.__name__
+                        + f" : {n}"
+                    )
+
+            for fillingContainer in obj.trainCargoFillingContainerState:
+                self.serialize(writer,fillingContainer)
+
+            for cargoOnTrack in obj.cargoContainerTracksStates:
+                self.serialize(writer,cargoOnTrack)
+
+            writer.writeBool(True)
+            for cargoOnBridge in obj.cargoOnBridge:
+                self.serialize(writer,cargoOnBridge)
+
+        @f
+        def _(obj:savegameObjects.TrainCargoTransferState):
+            # contained type ingored because unused
+            for states,text in [
+                (obj.cargoContainerTracksStates,"cargo on track"),
+                (obj.cargoOnInputBridge,"cargo on input bridge"),
+                (obj.cargoOnOutputBridge,"cargo on output bridge")
+            ]:
+                n = len(states)
+                if n != savegameObjects.TrainCargoTransferState.NUM_LAYERS:
+                    raise ValueError(
+                        f"Invalid number of {text} states for "
+                        + savegameObjects.TrainCargoTransferState.__name__
+                        + f" : {n}"
+                    )
+                for cargo in states:
+                    self.serialize(writer,cargo)
+
+#endregion
+#region simulation states with polymorphic
 
         @f
         def _(obj:savegameObjects.GenericSimulationState):
@@ -1434,9 +1602,7 @@ class GameObjectsSerializer:
             savegameObjects.Virtual1InSimulationState,
             savegameObjects.Virtual2InSimulationState
         ]:
-            def func(obj):
-                self._autoSerialize(writer,obj)
-            f(func,cls)
+            f(lambda obj: self._autoSerialize(writer,obj),cls)
 
         @f
         def _(obj:savegameObjects.BeltFilterSimulationState):
@@ -1563,6 +1729,13 @@ class GameObjectsSerializer:
         if typeMatch is None:
             raise ValueError(f"Unknown type for serialization : {objType}")
 
+#endregion
+#endregion
+
+
+
+#region configs
+
 def deserializeBuildingConfig(
     buildingId:str,
     reader:BinaryStreamReader,
@@ -1612,3 +1785,5 @@ def deserializeIslandConfig(
         return None
 
     raise InvalidSerializedData(f"Attempt to deserialize config of '{islandId}' which shouldn't have any")
+
+#endregion

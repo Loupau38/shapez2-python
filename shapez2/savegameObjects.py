@@ -65,8 +65,6 @@ class CargoContainer[T]:
     packages:list[gameObjects.CargoPackage[T]]
     maxPackages:int
 
-
-
 class SimulationSteps:
 
     STEPS_PER_WORLD_UNIT = 2305195200000
@@ -172,9 +170,14 @@ class FastBeltPathLaneState:
     firstItemDistance:SimulationSteps
     items:list[ItemOnBelt]
 
+class SpacePathsConstants:
+    NUM_LAYERS = 3
+    NUM_LANES = 4
+    ENTRIES_PER_BUNDLE = NUM_LAYERS * NUM_LANES
+
 class BundleState[T]:
 
-    ENTRIES_PER_BUNDLE = 12
+    ENTRIES_PER_BUNDLE = SpacePathsConstants.ENTRIES_PER_BUNDLE
 
     def __init__(self,entries:list[T]) -> None:
         self.entries = entries
@@ -227,6 +230,56 @@ class FluidPackageLaunchData:
 @dataclass
 class FluidPackageLaunchState:
     travellingPackageLaunch:FluidPackageLaunchData
+
+@dataclass
+class TrainCargoFillingContainerState[T]:
+    package:gameObjects.CargoPackage[T]
+
+class TrainCargoExchangerState[T]:
+
+    NUM_LAYERS = SpacePathsConstants.NUM_LAYERS
+    NUM_LOADING_PATH_SLOTS = 2
+
+    def __init__(
+        self,
+        loadingPathsStates:BundleState[BeltPathLaneState],
+        trainCargoFillingContainerState:list[TrainCargoFillingContainerState[T]],
+        cargoContainerTracksStates:list[BeltPathLaneState],
+        cargoOnBridge:list[BeltPathLaneState]
+    ) -> None:
+        self.loadingPathsStates = loadingPathsStates
+        self.trainCargoFillingContainerState = trainCargoFillingContainerState
+        self.cargoContainerTracksStates = cargoContainerTracksStates
+        self.cargoOnBridge = cargoOnBridge
+
+class TrainCargoTransferState[T]: # T unused but kept for other classes
+
+    NUM_LAYERS = SpacePathsConstants.NUM_LAYERS
+
+    def __init__(
+        self,
+        cargoContainerTracksStates:list[BeltPathLaneState],
+        cargoOnInputBridge:list[BeltPathLaneState],
+        cargoOnOutputBridge:list[BeltPathLaneState]
+    ) -> None:
+        self.cargoContainerTracksStates = cargoContainerTracksStates
+        self.cargoOnInputBridge = cargoOnInputBridge
+        self.cargoOnOutputBridge = cargoOnOutputBridge
+
+class GenericCargoExchanger[T]: ...
+class GenericCargoTransferrer[T]: ...
+
+@dataclass
+class TrainCargoLoaderSimulation[T](GenericCargoExchanger[LayeredWagonCargo[CargoContainer[T]]]):
+    state:TrainCargoExchangerState[T]
+
+@dataclass
+class TrainCargoUnloaderSimulation[T](GenericCargoExchanger[LayeredWagonCargo[CargoContainer[T]]]):
+    state:TrainCargoExchangerState[T]
+
+@dataclass
+class TrainCargoTransferrerSimulation[T](GenericCargoTransferrer[LayeredWagonCargo[CargoContainer[T]]]):
+    state:TrainCargoTransferState[T]
 
 #endregion
 
