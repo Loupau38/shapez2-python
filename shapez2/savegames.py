@@ -728,6 +728,218 @@ def _encodeSimulationState(
 
 
 
+#region resource chunks
+
+@dataclass
+class GenericMapResourceSource:
+    origin:savegameObjects.GlobalChunkCoordinate
+    chunks:list[utils.Pos] # ChunkVector ingame
+
+@dataclass
+class ShapeMapResourceSource(GenericMapResourceSource):
+    definitions:list[gameObjects.Shape] # ShapeDefinition ingame
+
+@dataclass
+class FluidMapResourceSource(GenericMapResourceSource):
+    fluid:gameObjects.GenericFluid
+
+@dataclass
+class MapSuperChunk:
+    pos:savegameObjects.SuperChunkCoordinate
+    resources:list[GenericMapResourceSource]
+
+@dataclass
+class GameResourcesMap:
+    superChunks:dict[savegameObjects.SuperChunkCoordinate,MapSuperChunk]
+
+def _decodeResourceChunks(
+    reader:BinaryStreamReaderWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> GameResourcesMap:
+
+    resourcesMap = GameResourcesMap({})
+
+    for superChunkIndex in range(reader.readInt()):
+        try:
+
+            reader.assertCheckpoint(Checkpoint.superChunkStart)
+            superChunkPos = savegameObjects.SuperChunkCoordinate(
+                reader.readInt(),
+                reader.readInt()
+            )
+
+            if superChunkPos in resourcesMap.superChunks:
+                raise InvalidSerializedData(f"Duplicate super chunk : {superChunkPos}")
+
+            resources:list[GenericMapResourceSource] = []
+
+            @reader.readBlob
+            def _():
+
+                reader.assertCheckpoint(Checkpoint.superChunkShapeResources)
+
+                for resourceIndex in range(reader.readInt()):
+                    try:
+
+                        resourceType = reader.readInt1()
+                        if resourceType != 1:
+                            raise InvalidSerializedData(
+                                f"Invalid resource type : {resourceType}"
+                            )
+
+                        resourceOrigin = serializer.deserialize(
+                            reader,
+                            savegameObjects.GlobalChunkCoordinate
+                        )
+                        numDefinitions = reader.readInt()
+                        definitions:list[gameObjects.Shape] = []
+
+                        for defIndex in range(numDefinitions):
+                            try:
+                                definitions.append(serializer.deserialize(
+                                    reader,
+                                    gameObjects.Shape
+                                ))
+                            except InvalidSerializedData as e:
+                                raise InvalidSerializedData(
+                                    f"Error while reading shape definition #{defIndex} : {e}"
+                                )
+
+                        chunks:list[utils.Pos] = []
+                        for chunkIndex in range(numDefinitions):
+                            try:
+                                chunks.append(utils.Pos(
+                                    reader.readInt(),
+                                    reader.readInt(),
+                                    0
+                                ))
+                            except InvalidSerializedData as e:
+                                raise InvalidSerializedData(
+                                    f"Error while reading chunk #{chunkIndex} : {e}"
+                                )
+
+                        resources.append(ShapeMapResourceSource(
+                            resourceOrigin,
+                            chunks,
+                            definitions
+                        ))
+
+                    except InvalidSerializedData as e:
+                        raise InvalidSerializedData(
+                            f"Error while reading shape resource #{resourceIndex} : {e}"
+                        )
+
+                reader.assertCheckpoint(Checkpoint.superChunkFluidResources)
+
+                for resourceIndex in range(reader.readInt()):
+                    try:
+
+                        resourceType = reader.readInt1()
+                        if resourceType != 1:
+                            raise InvalidSerializedData(
+                                f"Invalid resource type : {resourceType}"
+                            )
+
+                        resourceOrigin = serializer.deserialize(
+                            reader,
+                            savegameObjects.GlobalChunkCoordinate
+                        )
+
+                        fluid = serializer.deserialize(reader,gameObjects.GenericFluid)
+                        numChunks = reader.readInt()
+                        chunks:list[utils.Pos] = []
+
+                        for chunkIndex in range(numChunks):
+                            try:
+                                chunks.append(utils.Pos(
+                                    reader.readInt(),
+                                    reader.readInt(),
+                                    0
+                                ))
+                            except InvalidSerializedData as e:
+                                raise InvalidSerializedData(
+                                    f"Error while reading chunk #{chunkIndex} : {e}"
+                                )
+
+                        resources.append(FluidMapResourceSource(
+                            resourceOrigin,
+                            chunks,
+                            fluid
+                        ))
+
+                    except InvalidSerializedData as e:
+                        raise InvalidSerializedData(
+                            f"Error while reading fluid resource #{resourceIndex} : {e}"
+                        )
+
+            resourcesMap.superChunks[superChunkPos] = MapSuperChunk(superChunkPos,resources)
+
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(
+                f"Error while reading super chunk #{superChunkIndex} : {e}"
+            )
+
+    return resourcesMap
+
+def _encodeResourceChunks(
+    resourcesMap:GameResourcesMap,
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    writer.writeInt(len(resourcesMap.superChunks))
+
+    for superChunk in resourcesMap.superChunks.values():
+
+        writer.writeCheckpoint(Checkpoint.superChunkStart)
+        writer.writeInt(superChunk.pos.x)
+        writer.writeInt(superChunk.pos.y)
+
+        @writer.writeBlob
+        def _():
+
+            writer.writeCheckpoint(Checkpoint.superChunkShapeResources)
+            shapeResources = [r for r in superChunk.resources if isinstance(r,ShapeMapResourceSource)]
+            writer.writeInt(len(shapeResources))
+
+            for resource in shapeResources:
+
+                writer.writeInt1(1)
+                serializer.serialize(writer,resource.origin)
+                writer.writeInt(len(resource.definitions))
+
+                for shapeDef in resource.definitions:
+                    serializer.serialize(writer,shapeDef)
+
+                if len(resource.definitions) != len(resource.chunks):
+                    raise ValueError(
+                        "Different number of shape definitions and chunks in "
+                        + ShapeMapResourceSource.__name__
+                    )
+
+                for chunk in resource.chunks:
+                    writer.writeInt(chunk.x)
+                    writer.writeInt(chunk.y)
+
+            writer.writeCheckpoint(Checkpoint.superChunkFluidResources)
+            fluidResources = [r for r in superChunk.resources if isinstance(r,FluidMapResourceSource)]
+            writer.writeInt(len(fluidResources))
+
+            for resource in fluidResources:
+
+                writer.writeInt1(1)
+                serializer.serialize(writer,resource.origin)
+                serializer.serialize(writer,resource.fluid,gameObjects.GenericFluid)
+                writer.writeInt(len(resource.chunks))
+
+                for chunk in resource.chunks:
+                    writer.writeInt(chunk.x)
+                    writer.writeInt(chunk.y)
+
+#endregion
+
+
+
 #region savegame
 
 class FilePaths(enum.Enum):
@@ -752,7 +964,7 @@ class SavegameMap:
     simulationState:SignalChannelRegistry
     placedIslands:list[PlacedIsland]
     trains:TrainsSimulation
-    temp_resourceChunks:bytes
+    resourceChunks:GameResourcesMap
     cargo:CargoExchangingOrchestrator
 
 @dataclass
@@ -776,15 +988,15 @@ def _isNumber(string:str) -> bool:
 def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
     with zipfile.ZipFile(file,"r") as f:
-        stringsLUTRaw = f.read(FilePaths.stringsLUT)
-        statisticsRaw = f.read(FilePaths.statistics)
-        saveInfoRaw = f.read(FilePaths.saveInfo)
-        researchRaw = f.read(FilePaths.research)
-        playerRaw = f.read(FilePaths.player)
-        simulationStateRaw = f.read(FilePaths.simulationState)
-        trainsRaw = f.read(FilePaths.trains)
-        resourceChunksRaw = f.read(FilePaths.resourceChunks)
-        cargoRaw = f.read(FilePaths.cargo)
+        stringsLUTRaw = f.read(FilePaths.stringsLUT.value)
+        statisticsRaw = f.read(FilePaths.statistics.value)
+        saveInfoRaw = f.read(FilePaths.saveInfo.value)
+        researchRaw = f.read(FilePaths.research.value)
+        playerRaw = f.read(FilePaths.player.value)
+        simulationStateRaw = f.read(FilePaths.simulationState.value)
+        trainsRaw = f.read(FilePaths.trains.value)
+        resourceChunksRaw = f.read(FilePaths.resourceChunks.value)
+        cargoRaw = f.read(FilePaths.cargo.value)
         placedIslandsRaw:list[tuple[int,bytes]] = []
         islandAndBuildingStatesRaw:list[tuple[int,bytes]] = []
         for fileList,prefix,suffix in [
@@ -884,6 +1096,14 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while reading simulation state : {e}")
 
+    try:
+        decodedResourceChunks = _decodeResourceChunks(
+            BinaryStreamReaderWithStringLUT(resourceChunksRaw,useCheckpoints,stringsLUT),
+            serializer
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading resource chunks : {e}")
+
     # temp
     return Savegame(
         SavegameMap(
@@ -891,7 +1111,7 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             decodedSimState,
             decodedIslands,
             decodedTrains,
-            resourceChunksRaw,
+            decodedResourceChunks,
             decodedCargo
         ),
         stringsLUT,
@@ -965,19 +1185,23 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     )
     encodedSimState = simStateWriter.toBytes()
 
+    resourceChunksWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
+    _encodeResourceChunks(savegame.map.resourceChunks,resourceChunksWriter,serializer)
+    encodedResourceChunks = resourceChunksWriter.toBytes()
+
     encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
     savegame.temp_stringsLUT.serialize(encodedStringsLUT)
 
     with zipfile.ZipFile(file,"w") as f:
-        f.writestr(FilePaths.stringsLUT,encodedStringsLUT.toBytes())
-        f.writestr(FilePaths.statistics,savegame.temp_statistics)
-        f.writestr(FilePaths.saveInfo,savegame.temp_info)
-        f.writestr(FilePaths.research,savegame.temp_research)
-        f.writestr(FilePaths.player,savegame.temp_player)
-        f.writestr(FilePaths.simulationState,encodedSimState)
-        f.writestr(FilePaths.trains,encodedTrains)
-        f.writestr(FilePaths.resourceChunks,savegame.map.temp_resourceChunks)
-        f.writestr(FilePaths.cargo,encodedCargo)
+        f.writestr(FilePaths.stringsLUT.value,encodedStringsLUT.toBytes())
+        f.writestr(FilePaths.statistics.value,savegame.temp_statistics)
+        f.writestr(FilePaths.saveInfo.value,savegame.temp_info)
+        f.writestr(FilePaths.research.value,savegame.temp_research)
+        f.writestr(FilePaths.player.value,savegame.temp_player)
+        f.writestr(FilePaths.simulationState.value,encodedSimState)
+        f.writestr(FilePaths.trains.value,encodedTrains)
+        f.writestr(FilePaths.resourceChunks.value,encodedResourceChunks)
+        f.writestr(FilePaths.cargo.value,encodedCargo)
         for fileList,prefix,suffix in [
             (
                 encodedPlacedIslands,

@@ -4,6 +4,7 @@ from ._gameObjectsSerializer import serializationId as _serializationId
 import typing
 from dataclasses import dataclass
 import enum
+import math
 
 #region misc
 
@@ -41,6 +42,22 @@ class GlobalChunkCoordinate(utils.Pos):
             self.x * islands.ISLAND_SIZE,
             self.y * islands.ISLAND_SIZE,
             self.z * islands.ISLAND_SIZE
+        )
+
+    def containedInSuperChunk(self) -> "SuperChunkCoordinate":
+        return SuperChunkCoordinate(
+            math.floor((self.x+(islands.CHUNKS_PER_SUPER_CHUNK/2))/islands.CHUNKS_PER_SUPER_CHUNK),
+            math.floor((self.y+(islands.CHUNKS_PER_SUPER_CHUNK/2))/islands.CHUNKS_PER_SUPER_CHUNK)
+        )
+
+class SuperChunkCoordinate(utils.Pos):
+    """z attribute shouldn't be used"""
+
+    def globalChunkOrigin(self) -> GlobalChunkCoordinate:
+        return GlobalChunkCoordinate(
+            (self.x*islands.CHUNKS_PER_SUPER_CHUNK) - (islands.CHUNKS_PER_SUPER_CHUNK//2),
+            (self.y*islands.CHUNKS_PER_SUPER_CHUNK) - (islands.CHUNKS_PER_SUPER_CHUNK//2),
+            0
         )
 
 @dataclass

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import typing
 
 ISLAND_SIZE = 20
+CHUNKS_PER_SUPER_CHUNK = 64 # not entierly sure where to put this
+
 DEFAULT_REMOVED_ISLAND_SIZE = 3
 REDUCED_REMOVED_ISLAND_SIZE = DEFAULT_REMOVED_ISLAND_SIZE + 1
 NOTCH_SIZE = 4

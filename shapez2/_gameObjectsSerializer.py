@@ -34,6 +34,9 @@ class Checkpoint(enum.Enum):
     beltPathStateStart = checkpointHash("belt-path-state:start")
     beltPathStateEnd = checkpointHash("belt-path-state:end")
     trainData = checkpointHash("TrainData")
+    superChunkStart = checkpointHash("super-chunk")
+    superChunkShapeResources = checkpointHash("super-chunk:shape-resources")
+    superChunkFluidResources = checkpointHash("super-chunk:fluid-resources")
 
 class InvalidSerializedData(Exception): ...
 class EndOfStreamError(InvalidSerializedData): ...
@@ -608,6 +611,10 @@ class GameObjectsSerializer:
                 maxPackages
             )
 
+        # to use when ShapeDefinition is used ingame
+        if into == gameObjects.Shape:
+            return self._processShapeCode(reader.readString())
+
 #endregion
 #region simulation states
 
@@ -893,6 +900,7 @@ class GameObjectsSerializer:
         if into == savegameObjects.SignalChannelRingBufferState:
 
             arrayLen = reader.readInt()
+            print(f"This should be 24 : {arrayLen}") # remove when checked
             readCount = min(arrayLen,savegameObjects.SignalChannelRingBuffer.SIGNAL_ARRAY_SIZE)
 
             if readCount < arrayLen:
@@ -1365,6 +1373,11 @@ class GameObjectsSerializer:
             writer.writeShort(obj.maxPackages)
             for p in obj.packages:
                 self.serialize(writer,p)
+
+        # to use when ShapeDefinition is used ingame
+        @f
+        def _(obj:gameObjects.Shape):
+            writer.writeString(obj.toShapeCode())
 
 #endregion
 #region simulation states
