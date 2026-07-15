@@ -890,6 +890,33 @@ class GameObjectsSerializer:
                 ]
             )
 
+        if into == savegameObjects.SignalChannelRingBufferState:
+
+            arrayLen = reader.readInt()
+            readCount = min(arrayLen,savegameObjects.SignalChannelRingBuffer.SIGNAL_ARRAY_SIZE)
+
+            if readCount < arrayLen:
+                raise InvalidSerializedData(
+                    "Array length bigger than "
+                    + f"{savegameObjects.SignalChannelRingBuffer.SIGNAL_ARRAY_SIZE}"
+                    + " unsupported for "
+                    + savegameObjects.SignalChannelRingBufferState.__name__
+                    + f" : {arrayLen}"
+                )
+
+            array = [
+                savegameObjects.TimedSignal(
+                    gameObjects.NullSignal(),
+                    savegameObjects.SignalTicks(savegameObjects.SignalTicks.MIN_VALUE)
+                )
+                for _ in range(savegameObjects.SignalChannelRingBuffer.SIGNAL_ARRAY_SIZE)
+            ]
+
+            for i in range(readCount):
+                array[i] = self._autoDeserialize(reader,savegameObjects.TimedSignal)
+
+            return savegameObjects.SignalChannelRingBufferState(array)
+
 #endregion
 #region simulation states with polymorphic
 
@@ -1551,6 +1578,22 @@ class GameObjectsSerializer:
                     )
                 for cargo in states:
                     self.serialize(writer,cargo)
+
+        @f
+        def _(obj:savegameObjects.SignalChannelRingBufferState):
+
+            arrayLen = savegameObjects.SignalChannelRingBuffer.SIGNAL_ARRAY_SIZE
+
+            if len(obj.timedSignals) != arrayLen:
+                raise ValueError(
+                    "Invalid number of elements in "
+                    + savegameObjects.SignalChannelRingBufferState.__name__
+                    + f" : {len(obj.timedSignals)}"
+                )
+
+            writer.writeInt(arrayLen)
+            for timedSignal in obj.timedSignals:
+                self._autoSerialize(writer,timedSignal)
 
 #endregion
 #region simulation states with polymorphic

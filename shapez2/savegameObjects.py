@@ -94,6 +94,7 @@ class FluidContainerState:
     value:gameObjects.FluidUnit
     fluid:gameObjects.GenericFluid|None
 
+# ingame this is just `Ticks`
 class SimulationTicks:
 
     TICKS_PER_SECOND = 9604980000
@@ -122,6 +123,7 @@ class ShapeCollapseResult:
 class SignalTicks:
 
     TICKS_PER_SECOND = 12
+    MIN_VALUE = -(2**63)
 
     def __init__(self,value:int):
         self.value = value
@@ -135,6 +137,7 @@ class SignalTicks:
 
 class SignalBuffer:
 
+    # based on SignalSimulation.MaxSignalsPerUpdate = 4
     ARRAY_SIZE = 4
 
     def __init__(
@@ -280,6 +283,23 @@ class TrainCargoUnloaderSimulation[T](GenericCargoExchanger[LayeredWagonCargo[Ca
 @dataclass
 class TrainCargoTransferrerSimulation[T](GenericCargoTransferrer[LayeredWagonCargo[CargoContainer[T]]]):
     state:TrainCargoTransferState[T]
+
+@dataclass
+class TimedSignal:
+    signal:gameObjects.GenericSignal
+    tick:SignalTicks
+
+@dataclass
+class SignalChannelRingBufferState:
+    timedSignals:list[TimedSignal]
+
+class SignalChannelRingBuffer:
+
+    # based on SignalSimulation.MaxSignalsPerUpdate = 4
+    SIGNAL_ARRAY_SIZE = (4+(4*2))*2
+
+    def __init__(self,state:SignalChannelRingBufferState) -> None:
+        self.state = state
 
 #endregion
 

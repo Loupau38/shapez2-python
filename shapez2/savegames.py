@@ -679,6 +679,55 @@ def _encodeCargo(
 
 
 
+#region simulation state
+
+@dataclass
+class SignalChannelRegistry:
+    dynamicChannels:dict[gameObjects.SignalChannelId,savegameObjects.SignalChannelRingBuffer]
+
+def _decodeSimulationState(
+    reader:BinaryStreamReaderWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> tuple[savegameObjects.SimulationTicks,SignalChannelRegistry]:
+
+    simTime = serializer.deserialize(reader,savegameObjects.SimulationTicks)
+    registry = SignalChannelRegistry({})
+
+    for i in range(reader.readInt()):
+        try:
+
+            channelId = serializer.deserialize(reader,gameObjects.SignalChannelId)
+            @reader.readBlob
+            def _():
+                registry.dynamicChannels[channelId] = savegameObjects.SignalChannelRingBuffer(
+                    serializer.deserialize(reader,savegameObjects.SignalChannelRingBufferState)
+                )
+
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(f"Error while reading channel #{i} : {e}")
+
+    return simTime, registry
+
+def _encodeSimulationState(
+    simTime:savegameObjects.SimulationTicks,
+    registry:SignalChannelRegistry,
+    writer:BinaryStreamWriterWithStringLUT,
+    serializer:GameObjectsSerializer
+) -> None:
+
+    serializer.serialize(writer,simTime)
+
+    writer.writeInt(len(registry.dynamicChannels))
+    for channelId,channel in registry.dynamicChannels.items():
+        serializer.serialize(writer,channelId)
+        @writer.writeBlob
+        def _():
+            serializer.serialize(writer,channel.state)
+
+#endregion
+
+
+
 #region savegame
 
 class FilePaths(enum.Enum):
@@ -699,7 +748,8 @@ class FilePaths(enum.Enum):
 
 @dataclass
 class SavegameMap:
-    temp_simulationState:bytes
+    simulationTime:savegameObjects.SimulationTicks
+    simulationState:SignalChannelRegistry
     placedIslands:list[PlacedIsland]
     trains:TrainsSimulation
     temp_resourceChunks:bytes
@@ -826,10 +876,19 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while reading cargo : {e}")
 
+    try:
+        decodedSimTime, decodedSimState = _decodeSimulationState(
+            BinaryStreamReaderWithStringLUT(simulationStateRaw,useCheckpoints,stringsLUT),
+            serializer
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading simulation state : {e}")
+
     # temp
     return Savegame(
         SavegameMap(
-            simulationStateRaw,
+            decodedSimTime,
+            decodedSimState,
             decodedIslands,
             decodedTrains,
             resourceChunksRaw,
@@ -897,6 +956,15 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     _encodeCargo(savegame.map.cargo,cargoWriter,serializer)
     encodedCargo = cargoWriter.toBytes()
 
+    simStateWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
+    _encodeSimulationState(
+        savegame.map.simulationTime,
+        savegame.map.simulationState,
+        simStateWriter,
+        serializer
+    )
+    encodedSimState = simStateWriter.toBytes()
+
     encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
     savegame.temp_stringsLUT.serialize(encodedStringsLUT)
 
@@ -906,7 +974,7 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         f.writestr(FilePaths.saveInfo,savegame.temp_info)
         f.writestr(FilePaths.research,savegame.temp_research)
         f.writestr(FilePaths.player,savegame.temp_player)
-        f.writestr(FilePaths.simulationState,savegame.map.temp_simulationState)
+        f.writestr(FilePaths.simulationState,encodedSimState)
         f.writestr(FilePaths.trains,encodedTrains)
         f.writestr(FilePaths.resourceChunks,savegame.map.temp_resourceChunks)
         f.writestr(FilePaths.cargo,encodedCargo)

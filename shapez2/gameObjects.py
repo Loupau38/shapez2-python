@@ -253,6 +253,14 @@ class CompareMode(enum.Enum):
 class SignalChannelId:
     uid:int
 
+    def __hash__(self):
+        return hash(self.uid)
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,SignalChannelId):
+            return NotImplemented
+        return self.uid == other.uid
+
 @dataclass
 class RailConnectionColorFilter:
     mask:int
