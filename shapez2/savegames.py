@@ -1389,7 +1389,6 @@ class SavegameMap:
 @dataclass
 class Savegame:
     map:SavegameMap
-    temp_stringsLUT:StringLUTReadWrite # remove when all other parts are done
     statistics:GameStatisticsTracker
     temp_info:bytes
     temp_research:bytes
@@ -1542,7 +1541,6 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             decodedResourceChunks,
             decodedCargo
         ),
-        stringsLUT,
         decodedStatistics,
         saveInfoRaw,
         researchRaw,
@@ -1558,7 +1556,7 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
         tempScenario.researchConfig.shapesConfig,
         tempScenario.researchConfig.colorScheme
     )
-    stringsLUT = savegame.temp_stringsLUT
+    stringsLUT = StringLUTReadWrite()
 
     islandsToEncode = savegame.map.placedIslands.copy()
     maxIslandsPerBundle = math.ceil(4**math.log10(len(islandsToEncode)))
@@ -1621,11 +1619,12 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     savegame.statistics.serialize(statisticsWriter,serializer)
     encodedStatistics = statisticsWriter.toBytes()
 
-    encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
-    savegame.temp_stringsLUT.serialize(encodedStringsLUT)
+    stringsLUTWriter = BinaryStreamWriter(useCheckpoints)
+    stringsLUT.serialize(stringsLUTWriter)
+    encodedStringsLUT = stringsLUTWriter.toBytes()
 
     with zipfile.ZipFile(file,"w") as f:
-        f.writestr(FilePaths.stringsLUT.value,encodedStringsLUT.toBytes())
+        f.writestr(FilePaths.stringsLUT.value,encodedStringsLUT)
         f.writestr(FilePaths.statistics.value,encodedStatistics)
         f.writestr(FilePaths.saveInfo.value,savegame.temp_info)
         f.writestr(FilePaths.research.value,savegame.temp_research)
