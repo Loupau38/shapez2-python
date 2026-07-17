@@ -95,7 +95,12 @@ class BinaryStreamReader:
             return None
         if l == 0:
             return ""
-        return self.read(l).decode()
+        encoded = self.read(l)
+        try:
+            decoded = encoded.decode()
+        except UnicodeDecodeError as e:
+            raise InvalidSerializedData(f"Error while decoding string : {e}")
+        return decoded
 
     def assertCheckpoint(self,checkpoint:Checkpoint) -> None:
         if not self._checkpoints:
@@ -214,7 +219,11 @@ class StringLUTReadWrite:
         self._strings.clear()
         self._stringToIndex.clear()
         for i in range(reader.readInt()):
-            string = reader.read(reader.readInt()).decode()
+            encodedString = reader.read(reader.readInt())
+            try:
+                string = encodedString.decode()
+            except UnicodeDecodeError as e:
+                raise InvalidSerializedData(f"Error while decoding LUT string : {e}")
             self._strings.append(string)
             self._stringToIndex[string] = i
 
@@ -1148,7 +1157,8 @@ class GameObjectsSerializer:
         objTypeOverride:type|None=None,
         containedTypeOverride:type|None=None
     ) -> None:
-        """Specify a type override when serializing a generic or if 'obj' can be None !"""
+        """Specify a type override if `obj` can be `None`
+        or if it's a generic with specific serialization code !"""
 
         if objTypeOverride is None:
             if obj is None:

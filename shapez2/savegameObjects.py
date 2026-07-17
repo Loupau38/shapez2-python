@@ -318,6 +318,19 @@ class SignalChannelRingBuffer:
     def __init__(self,state:SignalChannelRingBufferState) -> None:
         self.state = state
 
+# this might need to go in the research module
+@dataclass
+class RocketGroupId:
+    id:str
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,RocketGroupId):
+            return NotImplemented
+        return self.id == other.id
+
 #endregion
 
 

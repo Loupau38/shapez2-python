@@ -18,6 +18,7 @@ import enum
 import json
 import math
 import datetime
+import collections.abc
 
 
 
@@ -940,6 +941,424 @@ def _encodeResourceChunks(
 
 
 
+#region statistics
+
+# the classes in this section have a structure closer to
+# the ingame ones (i.e. serialization methods directly here)
+# for simplicity of recreating the correct behaviors
+
+@dataclass
+class SerializationEntry:
+    deliveredTime:savegameObjects.SimulationTicks
+    amount:int
+
+class GenericStatisticsBucketSerializer[T]:
+
+    def serialize(
+        self,
+        writer:BinaryStreamWriter,
+        serializer:GameObjectsSerializer,
+        value:T
+    ) -> None: ...
+
+    def deserialize(
+        self,
+        reader:BinaryStreamReader,
+        serializer:GameObjectsSerializer
+    ) -> T: ...
+
+# Shape -> UnifiedShapeId ingame
+class StatisticsBucketShapeSerializer(
+    GenericStatisticsBucketSerializer[gameObjects.Shape]
+):
+
+    def serialize(self,writer,serializer,value):
+        # serialized as ShapeId ingame
+        serializer.serialize(writer,gameObjects.ShapeItem(value))
+
+    def deserialize(self,reader,serializer):
+        # deserialized from ShapeId ingame
+        return serializer.deserialize(reader,gameObjects.ShapeItem).shape
+
+class StatisticsBucketRocketGroupIdSerializer(
+    GenericStatisticsBucketSerializer[savegameObjects.RocketGroupId]
+):
+
+    def serialize(self,writer,serializer,value):
+        writer.writeString(value.id)
+
+    def deserialize(self,reader,serializer):
+        return savegameObjects.RocketGroupId(reader.readString())
+
+class StatisticsStream[T:collections.abc.Hashable]:
+
+    def __init__(self) -> None:
+        # ingame the entries are stored differently
+        # and this dict is computed on serialization
+        self.entries = dict[T,list[SerializationEntry]]()
+
+    def serialize(
+        self,
+        writer:BinaryStreamWriter,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None:
+
+        numEntries = sum(len(l) for l in self.entries.values())
+        writer.writeInt(numEntries)
+        writer.writeInt(len(self.entries))
+
+        for key,serializationEntries in self.entries.items():
+
+            containedTypeSerializer.serialize(writer,serializer,key)
+            writer.writeInt(len(serializationEntries))
+
+            for entry in serializationEntries:
+                serializer.serialize(writer,entry.deliveredTime)
+
+                if entry.amount > 255:
+                    raise ValueError(
+                        "Amount too big for "
+                        + SerializationEntry.__name__
+                        + f" : {entry.amount}"
+                    )
+
+                writer.writeInt1(entry.amount)
+
+    def deserialize(
+        self,
+        reader:BinaryStreamReader,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None:
+
+        self.entries.clear()
+        totalNumEntries = reader.readInt()
+        numEntries = reader.readInt()
+
+        if (numEntries == 0) or (totalNumEntries == 0):
+            return
+
+        for entriesIndex in range(numEntries):
+            try:
+
+                dictKey = containedTypeSerializer.deserialize(reader,serializer)
+
+                if dictKey in self.entries:
+                    entriesList = self.entries[dictKey]
+                else:
+                    entriesList = []
+                    self.entries[dictKey] = entriesList
+
+                for serializationEntryIndex in range(reader.readInt()):
+                    try:
+                        entriesList.append(SerializationEntry(
+                            serializer.deserialize(reader,savegameObjects.SimulationTicks),
+                            reader.readInt1()
+                        ))
+                    except InvalidSerializedData as e:
+                        raise InvalidSerializedData(
+                            f"Error while reading serialization entry #{serializationEntryIndex} : {e}"
+                        )
+
+            except InvalidSerializedData as e:
+                raise InvalidSerializedData(
+                    f"Error while reading entries list #{entriesIndex} : {e}"
+                )
+
+class GenericStatisticsTracker[T]:
+
+    # ingame these are from IStatisticsStream
+    # which IStatisticsTracker inherits from
+
+    def serialize(
+        self,
+        writer:BinaryStreamWriter,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None: ...
+
+    def deserialize(
+        self,
+        reader:BinaryStreamReader,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None: ...
+
+class StatisticsBucket[T:collections.abc.Hashable]:
+
+    def __init__(self) -> None:
+        self.counts:dict[T,int] = {}
+
+    def serialize(
+        self,
+        writer:BinaryStreamWriter,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None:
+        writer.writeInt(len(self.counts))
+        for k,v in self.counts.items():
+            containedTypeSerializer.serialize(writer,serializer,k)
+            writer.writeLong(v)
+
+    def deserialize(
+        self,
+        reader:BinaryStreamReader,
+        serializer:GameObjectsSerializer,
+        containedTypeSerializer:GenericStatisticsBucketSerializer[T]
+    ) -> None:
+
+        self.counts.clear()
+        for i in range(reader.readInt()):
+            try:
+                key = containedTypeSerializer.deserialize(reader,serializer)
+                self.counts[key] = reader.readLong()
+            except InvalidSerializedData as e:
+                raise InvalidSerializedData(f"Error while reading count #{i} : {e}")
+
+class IntervalBasedStatisticsTracker[T](GenericStatisticsTracker[T]):
+
+    def __init__(
+        self,
+        interval:savegameObjects.SimulationTicks,
+        maxBucketHistory:int
+    ) -> None:
+        self.interval = interval
+        self.maxBucketHistory = maxBucketHistory
+        self.buckets = [StatisticsBucket[T]() for _ in range(maxBucketHistory)]
+        self.lastBucketIndex = 0
+
+    def serialize(self,writer,serializer,containedTypeSerializer):
+
+        writer.writeInt(self.lastBucketIndex)
+        writer.writeInt(self.maxBucketHistory)
+        # TicksSerializer not used ingame
+        writer.writeLong(self.interval.value)
+        writer.writeInt(len(self.buckets))
+
+        @writer.writeBlob
+        def _():
+            for bucket in self.buckets:
+                bucket.serialize(writer,serializer,containedTypeSerializer)
+
+    def deserialize(self,reader,serializer,containedTypeSerializer):
+
+        self.lastBucketIndex = reader.readInt()
+
+        maxBucketHistory = reader.readInt()
+        if maxBucketHistory != self.maxBucketHistory:
+            raise InvalidSerializedData(
+                f"Invalid max bucket history, expected {self.maxBucketHistory}, got {maxBucketHistory}"
+            )
+
+        # TicksSerializer not used ingame
+        interval = reader.readLong()
+        if interval != self.interval.value:
+            raise InvalidSerializedData(
+                f"Invalid interval, expected {self.interval.value}, got {interval}"
+            )
+
+        self.buckets.clear()
+        numBuckets = reader.readInt()
+
+        @reader.readBlob
+        def _():
+            for i in range(numBuckets):
+                try:
+                    self.buckets[i].deserialize(reader,serializer,containedTypeSerializer)
+                except InvalidSerializedData as e:
+                    raise InvalidSerializedData(f"Error while reading bucket #{i} : {e}")
+
+class AggregatedStatisticsTracker[T](GenericStatisticsTracker[T]):
+
+    def __init__(self) -> None:
+        self.bucket = StatisticsBucket[T]()
+
+    def serialize(self,writer,serializer,containedTypeSerializer):
+        self.bucket.serialize(writer,serializer,containedTypeSerializer)
+
+    def deserialize(self,reader,serializer,containedTypeSerializer):
+        self.bucket.deserialize(reader,serializer,containedTypeSerializer)
+
+class SlidingWindowStatisticsStreamBucket:
+
+    def serialize(self,writer:BinaryStreamWriter) -> None:
+        writer.writeInt(self.entriesStartIndex)
+        writer.writeInt(self.entriesCount)
+
+    def deserialize(self,reader:BinaryStreamReader) -> None:
+        self.entriesStartIndex = reader.readInt()
+        self.entriesCount = reader.readInt()
+
+class SlidingWindowStatisticsStreamView[T](GenericStatisticsTracker[T]):
+
+    def __init__(self,maxBuckets:int) -> None:
+        self.buckets = [
+            SlidingWindowStatisticsStreamBucket()
+            for _ in range(maxBuckets)
+        ]
+
+    def serialize(self,writer,serializer,containedTypeSerializer):
+        writer.writeInt(len(self.buckets))
+        for b in self.buckets:
+            b.serialize(writer)
+
+    def deserialize(self,reader,serializer,containedTypeSerializer):
+
+        numBuckets = reader.readInt()
+        if numBuckets != len(self.buckets):
+            raise InvalidSerializedData(
+                f"Invalid number of buckets, expected {len(self.buckets)}, got {numBuckets}"
+            )
+
+        for b in self.buckets:
+            b.deserialize(reader)
+
+class GameStatisticsTrackerInterval(enum.Enum):
+    oneSecond = 1
+    fiveSeconds = 5
+    oneMinute = 60
+    fiveMinutes = 5 * 60
+    oneHour = 60 * 60
+
+class GameStatisticsTrackerSlidingWindowDuration(enum.Enum):
+    oneSecond = 1
+    fiveSeconds = 5
+    oneMinute = 60
+
+class GameStatisticsTracker:
+
+    INTERVAL_TRACKER_HISTORY_SIZE = 32
+    SLIDING_WINDOW_TRACKER_HISTORY_SIZE = 1
+    INTERVALS = list(GameStatisticsTrackerInterval)
+    SLIDING_WINDOW_DURATIONS = list(GameStatisticsTrackerSlidingWindowDuration)
+
+    def __init__(self) -> None:
+
+        self.shapeStatisticsStream = StatisticsStream[gameObjects.Shape]() # UnifiedShapeId ingame
+        self.rocketStatisticsStream = StatisticsStream[savegameObjects.RocketGroupId]()
+
+        self.shapeDeliveryTrackers = list[GenericStatisticsTracker[gameObjects.Shape]]() # UnifiedShapeId ingame
+        self.rocketDeliveryTrackers = list[GenericStatisticsTracker[savegameObjects.RocketGroupId]]()
+
+        for interval in GameStatisticsTracker.INTERVALS:
+            intervalTicks = savegameObjects.SimulationTicks.fromSeconds(interval.value)
+            self.shapeDeliveryTrackers.append(IntervalBasedStatisticsTracker(
+                intervalTicks,
+                GameStatisticsTracker.INTERVAL_TRACKER_HISTORY_SIZE
+            ))
+            self.rocketDeliveryTrackers.append(IntervalBasedStatisticsTracker(
+                intervalTicks,
+                GameStatisticsTracker.INTERVAL_TRACKER_HISTORY_SIZE
+            ))
+
+        self.shapeDeliveryTrackers.append(AggregatedStatisticsTracker())
+        self.rocketDeliveryTrackers.append(AggregatedStatisticsTracker())
+
+        # duration unused for serialization
+        for _ in GameStatisticsTracker.SLIDING_WINDOW_DURATIONS:
+            self.shapeDeliveryTrackers.append(SlidingWindowStatisticsStreamView(
+                GameStatisticsTracker.SLIDING_WINDOW_TRACKER_HISTORY_SIZE
+            ))
+            self.rocketDeliveryTrackers.append(SlidingWindowStatisticsStreamView(
+                GameStatisticsTracker.SLIDING_WINDOW_TRACKER_HISTORY_SIZE
+            ))
+
+    def serialize(
+        self,
+        writer:BinaryStreamWriter,
+        serializer:GameObjectsSerializer
+    ) -> None:
+
+        for statisticsStream,deliveryTrackers,typeSerializer in [
+            (
+                self.shapeStatisticsStream,
+                self.shapeDeliveryTrackers,
+                StatisticsBucketShapeSerializer()
+            ),
+            (
+                self.rocketStatisticsStream,
+                self.rocketDeliveryTrackers,
+                StatisticsBucketRocketGroupIdSerializer()
+            )
+        ]:
+
+            statisticsStream:StatisticsStream
+            deliveryTrackers:list[GenericStatisticsTracker]
+            typeSerializer:GenericStatisticsBucketSerializer
+
+            @writer.writeBlob
+            def _():
+
+                @writer.writeBlob
+                def _():
+                    statisticsStream.serialize(writer,serializer,typeSerializer)
+
+                writer.writeInt(len(deliveryTrackers))
+                for tracker in deliveryTrackers:
+                    @writer.writeBlob
+                    def _():
+                        tracker.serialize(writer,serializer,typeSerializer)
+
+    def deserialize(
+        self,
+        reader:BinaryStreamReader,
+        serializer:GameObjectsSerializer
+    ) -> None:
+
+        for statisticsStream,deliveryTrackers,typeSerializer,text in [
+            (
+                self.shapeStatisticsStream,
+                self.shapeDeliveryTrackers,
+                StatisticsBucketShapeSerializer(),
+                "shape"
+            ),
+            (
+                self.rocketStatisticsStream,
+                self.rocketDeliveryTrackers,
+                StatisticsBucketRocketGroupIdSerializer(),
+                "rocket"
+            )
+        ]:
+
+            statisticsStream:StatisticsStream
+            deliveryTrackers:list[GenericStatisticsTracker]
+            typeSerializer:GenericStatisticsBucketSerializer
+            text:str
+
+            @reader.readBlob
+            def _():
+
+                try:
+                    @reader.readBlob
+                    def _():
+                        statisticsStream.deserialize(reader,serializer,typeSerializer)
+                except InvalidSerializedData as e:
+                    raise InvalidSerializedData(
+                        f"Error while reading {text} statistics stream : {e}"
+                    )
+
+                numTrackers = reader.readInt()
+                if numTrackers != len(deliveryTrackers):
+                    raise InvalidSerializedData(
+                        f"Invalid number of {text} delivery trackers, "
+                        + f"expected {len(deliveryTrackers)}, got {numTrackers}"
+                    )
+
+                for i in range(numTrackers):
+                    try:
+                        @reader.readBlob
+                        def _():
+                            deliveryTrackers[i].deserialize(reader,serializer,typeSerializer)
+                    except InvalidSerializedData as e:
+                        raise InvalidSerializedData(
+                            f"Error while reading {text} delivery tracker #{i} : {e}"
+                        )
+
+#endregion
+
+
+
 #region savegame
 
 class FilePaths(enum.Enum):
@@ -971,7 +1390,7 @@ class SavegameMap:
 class Savegame:
     map:SavegameMap
     temp_stringsLUT:StringLUTReadWrite # remove when all other parts are done
-    temp_statistics:bytes
+    statistics:GameStatisticsTracker
     temp_info:bytes
     temp_research:bytes
     temp_player:bytes
@@ -1104,6 +1523,15 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while reading resource chunks : {e}")
 
+    decodedStatistics = GameStatisticsTracker()
+    try:
+        decodedStatistics.deserialize(
+            BinaryStreamReaderWithStringLUT(statisticsRaw,useCheckpoints,stringsLUT),
+            serializer
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading statistics : {e}")
+
     # temp
     return Savegame(
         SavegameMap(
@@ -1115,7 +1543,7 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             decodedCargo
         ),
         stringsLUT,
-        statisticsRaw,
+        decodedStatistics,
         saveInfoRaw,
         researchRaw,
         playerRaw
@@ -1189,12 +1617,16 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     _encodeResourceChunks(savegame.map.resourceChunks,resourceChunksWriter,serializer)
     encodedResourceChunks = resourceChunksWriter.toBytes()
 
+    statisticsWriter = BinaryStreamWriterWithStringLUT(useCheckpoints,stringsLUT)
+    savegame.statistics.serialize(statisticsWriter,serializer)
+    encodedStatistics = statisticsWriter.toBytes()
+
     encodedStringsLUT = BinaryStreamWriter(useCheckpoints)
     savegame.temp_stringsLUT.serialize(encodedStringsLUT)
 
     with zipfile.ZipFile(file,"w") as f:
         f.writestr(FilePaths.stringsLUT.value,encodedStringsLUT.toBytes())
-        f.writestr(FilePaths.statistics.value,savegame.temp_statistics)
+        f.writestr(FilePaths.statistics.value,encodedStatistics)
         f.writestr(FilePaths.saveInfo.value,savegame.temp_info)
         f.writestr(FilePaths.research.value,savegame.temp_research)
         f.writestr(FilePaths.player.value,savegame.temp_player)
