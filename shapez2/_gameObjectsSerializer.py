@@ -8,6 +8,7 @@ import typing
 import inspect
 import types
 import struct
+from dataclasses import dataclass
 
 #region binary data
 
@@ -261,8 +262,6 @@ class BinaryStreamWriterWithStringLUT(BinaryStreamWriter):
 
     def writeString(self,string:str|None) -> None:
         self.writeInt(self._stringLUT.getIndex(string))
-
-#endregion
 
 
 
@@ -1851,5 +1850,311 @@ def deserializeIslandConfig(
         return None
 
     raise InvalidSerializedData(f"Attempt to deserialize config of '{islandId}' which shouldn't have any")
+
+#endregion
+
+
+
+#endregion
+
+
+
+#region json data
+
+type jsonFormat = (
+    None
+    | type[bool]
+    | type[int]
+    | type[float]
+    | type[str]
+    | list[jsonFormat]
+    | dict[str,jsonFormat|JSONOptionalValueFormat]
+    | JSONNoFormatCheck
+)
+type jsonObject = None|bool|int|float|str|list[jsonObject]|dict[str,jsonObject]
+
+@dataclass
+class JSONOptionalValueFormat:
+    valueFormat:jsonFormat
+    default:jsonObject
+
+class JSONNoFormatCheck:
+    """Must be instantiated to work"""
+
+class JSONFormatError(Exception): ...
+
+def getJSONObjWithFormat(rawObj:jsonObject,format:jsonFormat,floatCanBeInt:bool=True) -> tuple[jsonObject,list[str]]:
+
+    warningMsgs = []
+    defaultObj = object()
+
+    def inner(obj:jsonObject,format:jsonFormat) -> jsonObject:
+
+        objType = type(obj)
+
+        if isinstance(format,dict):
+
+            if objType != dict:
+                raise JSONFormatError(f"Incorrect object type, expected 'dict' got '{objType.__name__}'")
+
+            newObj = {}
+
+            for formatKey,formatValue in format.items():
+
+                objValue = obj.get(formatKey,defaultObj)
+
+                if isinstance(formatValue,JSONOptionalValueFormat):
+                    if objValue is defaultObj:
+                        newObj[formatKey] = formatValue.default
+                    elif objValue == formatValue.default:
+                        newObj[formatKey] = objValue
+                    else:
+                        newObj[formatKey] = inner(objValue,formatValue.valueFormat)
+                else:
+                    if objValue is defaultObj:
+                        raise JSONFormatError(f"Missing dict key : {formatKey}")
+                    newObj[formatKey] = inner(objValue,formatValue)
+
+            for key in obj.keys():
+                if format.get(key) is None:
+                    warningMsgs.append(f"Skipping key : {key}")
+
+            return newObj
+
+        if isinstance(format,list):
+
+            if objType != list:
+                raise JSONFormatError(f"Incorrect object type, expected 'list' got '{objType.__name__}'")
+
+            newObj = []
+            elemFormat = format[0]
+
+            for objElem in obj:
+
+                newObj.append(inner(objElem,elemFormat))
+
+            return newObj
+
+        if isinstance(format,JSONNoFormatCheck):
+            return obj
+
+        if floatCanBeInt and (format == float) and (objType == int):
+            return float(obj)
+
+        if objType != format:
+            raise JSONFormatError(f"Incorrect object type, expected '{format.__name__}' got '{objType.__name__}'")
+
+        return obj
+
+    return inner(rawObj,format), warningMsgs
+
+def encodeJSONObjWithFormat(obj:jsonObject,format:jsonFormat) -> jsonObject:
+
+    defaultObj = object()
+    
+    def inner(obj:jsonObject,format:jsonFormat) -> jsonObject:
+
+        if isinstance(format,dict):
+
+            newObj = {}
+
+            for formatKey,formatValue in format.items():
+
+                objValue = obj.get(formatKey,defaultObj)
+
+                if isinstance(formatValue,JSONOptionalValueFormat):
+                    if (objValue == formatValue.default) or (objValue is defaultObj):
+                        continue
+                    newObj[formatKey] = inner(objValue,formatValue.valueFormat)
+                else:
+                    newObj[formatKey] = inner(objValue,formatValue)
+
+            return newObj
+
+        if isinstance(format,list):
+
+            newObj = []
+
+            for objElem in obj:
+
+                newObj.append(inner(objElem,format[0]))
+
+            return newObj
+
+        return obj
+
+    return inner(obj,format)
+
+_TSpecialCase = typing.TypeVar("_TSpecialCase")
+_TSpecialCaseInnerT = typing.TypeVar("_TSpecialCaseInnerT")
+
+def jsonObjToCustomObj[T](
+    rawObj:jsonObject,
+    customObjClass:type[T],
+    keyMappings:dict[type,dict[str,str|list[str]]],
+    specialCases:Callable[[
+        jsonObject,
+        type[_TSpecialCase],
+        object,
+        Callable[[ # signature of 'inner'
+            jsonObject,
+            type[_TSpecialCaseInnerT]|types.GenericAlias|types.UnionType
+        ],_TSpecialCaseInnerT]
+    ],_TSpecialCase|object]
+) -> T:
+
+    notASpecialCase = object()
+
+    def inner[T](rawObj:jsonObject,toClass:type[T]|types.GenericAlias|types.UnionType) -> T:
+
+        specialCase = specialCases(rawObj,toClass,notASpecialCase,inner)
+        if specialCase is not notASpecialCase:
+            return specialCase
+
+        if keyMappings.get(toClass) is None:
+
+            typeOrigin = typing.get_origin(toClass)
+            typeArgs = typing.get_args(toClass)
+
+            if typeOrigin == list:
+                newObj = []
+                for elem in rawObj:
+                    newObj.append(inner(elem,typeArgs[0]))
+                return newObj
+
+            if typeOrigin == typing.Union:
+                assert typeArgs[1] == types.NoneType
+                if rawObj is None:
+                    return None
+                return inner(rawObj,typeArgs[0])
+
+            assert isinstance(rawObj,(str,int,float,bool,types.NoneType,list,dict)), type(rawObj)
+            return rawObj
+
+        kwargs = {}
+        for attrName,attrType in inspect.get_annotations(toClass).items():
+
+            rawObjKey = keyMappings[toClass].get(attrName)
+
+            if rawObjKey is None:
+                newElem = inner(rawObj,attrType)
+
+            else:
+
+                if isinstance(rawObjKey,str):
+                    rawObjKey = [rawObjKey]
+                rawElem = rawObj
+                for k in rawObjKey:
+                    rawElem = rawElem[k]
+                newElem = inner(rawElem,attrType)
+
+            kwargs[attrName] = newElem
+
+        return toClass(**kwargs)
+
+    return inner(rawObj,customObjClass)
+
+@dataclass
+class JSONMultiKeyValue:
+    value:dict[str,jsonObject]
+
+class HasJSONEncodeOverride:
+    def _jsonEncodeOverride(self) -> tuple[list[str],dict[str,jsonObject]]:
+        raise NotImplementedError
+
+def customObjToJSONObj(
+    customObj:typing.Any,
+    keyMappings:dict[type,dict[str,str|list[str]]],
+    specialCases:Callable[[
+        typing.Any,
+        object,
+        Callable[[ # signature of 'inner'
+            typing.Any,
+            type|types.GenericAlias|types.UnionType
+        ],jsonObject|JSONMultiKeyValue]
+    ],jsonObject|JSONMultiKeyValue|object]
+) -> jsonObject:
+
+    notASpecialCase = object()
+
+    def inner(
+        obj:typing.Any,
+        objClass:type|types.GenericAlias|types.UnionType
+    ) -> jsonObject|JSONMultiKeyValue:
+
+        if isinstance(objClass,type):
+            assert type(obj) == objClass, f"{type(obj)=} != {objClass=}"
+
+        specialCase = specialCases(obj,notASpecialCase,inner)
+        if specialCase is not notASpecialCase:
+            return specialCase
+
+        if keyMappings.get(objClass) is None:
+
+            typeOrigin = typing.get_origin(objClass)
+            typeArgs = typing.get_args(objClass)
+
+            if typeOrigin == list:
+                newObj = []
+                for elem in obj:
+                    newElem = inner(elem,typeArgs[0])
+                    assert not isinstance(newElem,JSONMultiKeyValue)
+                    newObj.append(newElem)
+                return newObj
+
+            if typeOrigin == typing.Union:
+                assert typeArgs[1] == types.NoneType
+                if obj is None:
+                    return None
+                return inner(obj,typeArgs[0])
+
+            assert isinstance(obj,(str,int,float,bool,types.NoneType,list,dict)), type(obj)
+            return obj
+
+        if isinstance(obj,HasJSONEncodeOverride):
+            skipAttrs, newObj = obj._jsonEncodeOverride()
+        else:
+            skipAttrs = []
+            newObj = {}
+
+        for attrName,attrType in inspect.get_annotations(objClass).items():
+
+            if attrName in skipAttrs:
+                continue
+
+            attrValue = getattr(obj,attrName)
+            encodeToKey = keyMappings[objClass].get(attrName)
+
+            if encodeToKey is None:
+                addValues = inner(attrValue,attrType)
+                assert isinstance(addValues,JSONMultiKeyValue)
+                newObj.update(addValues.value)
+
+            else:
+
+                if isinstance(encodeToKey,str):
+                    encodeToKey = [encodeToKey]
+                encodeInObj = newObj
+                for k in encodeToKey[:-1]:
+                    if encodeInObj.get(k) is None:
+                        encodeInObj[k] = {}
+                    encodeInObj = encodeInObj[k]
+                encodeInKey = encodeToKey[-1]
+
+                newElem = inner(attrValue,attrType)
+                assert not isinstance(newElem,JSONMultiKeyValue)
+
+                if encodeInKey in encodeInObj:
+                    assert isinstance(encodeInObj[encodeInKey],dict)
+                    assert isinstance(newElem,dict)
+                    encodeInObj[encodeInKey].update(newElem)
+                else:
+                    encodeInObj[encodeInKey] = newElem
+
+        return newObj
+
+    result = inner(customObj,type(customObj))
+    assert not isinstance(result,JSONMultiKeyValue)
+    return result
 
 #endregion

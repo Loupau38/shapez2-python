@@ -11,7 +11,7 @@ from . import(
 import json
 import importlib.resources
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, EnumType
 import typing
 import inspect
 import types
@@ -38,7 +38,7 @@ class OptionalValueFormat[T1,T2]:
 
 @dataclass
 class RestrictedValuesFormat:
-    allowedValues:type[Enum]|list
+    allowedValues:EnumType|list
 
 noFormatCheck = object()
 rewardObject = object()
