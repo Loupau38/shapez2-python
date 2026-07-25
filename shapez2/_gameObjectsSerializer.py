@@ -1876,7 +1876,12 @@ type jsonObject = None|bool|int|float|str|list[jsonObject]|dict[str,jsonObject]
 @dataclass
 class JSONOptionalValueFormat:
     valueFormat:jsonFormat
-    default:jsonObject
+    _default:jsonObject|Callable[[],jsonObject]
+
+    def getDefault(self) -> jsonObject:
+        if callable(self._default):
+            return self._default()
+        return self._default
 
 class JSONNoFormatCheck:
     """Must be instantiated to work"""
@@ -1905,11 +1910,9 @@ def getJSONObjWithFormat(rawObj:jsonObject,format:jsonFormat,floatCanBeInt:bool=
 
                 if isinstance(formatValue,JSONOptionalValueFormat):
                     if objValue is defaultObj:
-                        newObj[formatKey] = formatValue.default
-                    elif objValue == formatValue.default:
-                        newObj[formatKey] = objValue
-                    else:
-                        newObj[formatKey] = inner(objValue,formatValue.valueFormat)
+                        # decode default value to allow for defaults in defaults
+                        objValue = formatValue.getDefault()
+                    newObj[formatKey] = inner(objValue,formatValue.valueFormat)
                 else:
                     if objValue is defaultObj:
                         raise JSONFormatError(f"Missing dict key : {formatKey}")
@@ -1948,7 +1951,7 @@ def getJSONObjWithFormat(rawObj:jsonObject,format:jsonFormat,floatCanBeInt:bool=
 
     return inner(rawObj,format), warningMsgs
 
-def encodeJSONObjWithFormat(obj:jsonObject,format:jsonFormat) -> jsonObject:
+def encodeJSONObjWithFormat(obj:jsonObject,format:jsonFormat,includeDefaults:bool=False) -> jsonObject:
 
     defaultObj = object()
     
@@ -1963,8 +1966,14 @@ def encodeJSONObjWithFormat(obj:jsonObject,format:jsonFormat) -> jsonObject:
                 objValue = obj.get(formatKey,defaultObj)
 
                 if isinstance(formatValue,JSONOptionalValueFormat):
-                    if (objValue == formatValue.default) or (objValue is defaultObj):
-                        continue
+                    if objValue is defaultObj:
+                        if includeDefaults:
+                            objValue = formatValue.getDefault()
+                        else:
+                            continue
+                    elif objValue == formatValue.getDefault():
+                        if not includeDefaults:
+                            continue
                     newObj[formatKey] = inner(objValue,formatValue.valueFormat)
                 else:
                     newObj[formatKey] = inner(objValue,formatValue)
@@ -1987,19 +1996,25 @@ def encodeJSONObjWithFormat(obj:jsonObject,format:jsonFormat) -> jsonObject:
 
 _TSpecialCase = typing.TypeVar("_TSpecialCase")
 _TSpecialCaseInnerT = typing.TypeVar("_TSpecialCaseInnerT")
+type keyMappingsType = dict[type,dict[str,str|list[str]]]
+type jsonObjToCustomObjInnerFunc = Callable[[
+    jsonObject,
+    type[_TSpecialCaseInnerT]|types.GenericAlias|types.UnionType
+],_TSpecialCaseInnerT]
+
+# different from str.capitalize
+def _capitalizeAttrName(name:str) -> str:
+    return name[0].upper() + name[1:]
 
 def jsonObjToCustomObj[T](
     rawObj:jsonObject,
     customObjClass:type[T],
-    keyMappings:dict[type,dict[str,str|list[str]]],
+    keyMappings:keyMappingsType,
     specialCases:Callable[[
         jsonObject,
         type[_TSpecialCase],
         object,
-        Callable[[ # signature of 'inner'
-            jsonObject,
-            type[_TSpecialCaseInnerT]|types.GenericAlias|types.UnionType
-        ],_TSpecialCaseInnerT]
+        jsonObjToCustomObjInnerFunc
     ],_TSpecialCase|object]
 ) -> T:
 
@@ -2037,10 +2052,11 @@ def jsonObjToCustomObj[T](
             rawObjKey = keyMappings[toClass].get(attrName)
 
             if rawObjKey is None:
+                rawObjKey = _capitalizeAttrName(attrName)
+
+            if rawObjKey == []:
                 newElem = inner(rawObj,attrType)
-
             else:
-
                 if isinstance(rawObjKey,str):
                     rawObjKey = [rawObjKey]
                 rawElem = rawObj
@@ -2062,16 +2078,18 @@ class HasJSONEncodeOverride:
     def _jsonEncodeOverride(self) -> tuple[list[str],dict[str,jsonObject]]:
         raise NotImplementedError
 
+type customObjToJSONObjInnerFunc = Callable[[
+    typing.Any,
+    type|types.GenericAlias|types.UnionType
+],jsonObject|JSONMultiKeyValue]
+
 def customObjToJSONObj(
     customObj:typing.Any,
-    keyMappings:dict[type,dict[str,str|list[str]]],
+    keyMappings:keyMappingsType,
     specialCases:Callable[[
         typing.Any,
         object,
-        Callable[[ # signature of 'inner'
-            typing.Any,
-            type|types.GenericAlias|types.UnionType
-        ],jsonObject|JSONMultiKeyValue]
+        customObjToJSONObjInnerFunc
     ],jsonObject|JSONMultiKeyValue|object]
 ) -> jsonObject:
 
@@ -2126,6 +2144,9 @@ def customObjToJSONObj(
             encodeToKey = keyMappings[objClass].get(attrName)
 
             if encodeToKey is None:
+                encodeToKey = _capitalizeAttrName(attrName)
+
+            if encodeToKey == []:
                 addValues = inner(attrValue,attrType)
                 assert isinstance(addValues,JSONMultiKeyValue)
                 newObj.update(addValues.value)

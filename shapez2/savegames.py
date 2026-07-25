@@ -7,7 +7,11 @@ from ._gameObjectsSerializer import (
     BinaryStreamReaderWithStringLUT,
     BinaryStreamWriterWithStringLUT,
     GameObjectsSerializer,
-    InvalidSerializedData
+    InvalidSerializedData,
+    JSONOptionalValueFormat as _Optional,
+    jsonObject,
+    JSONMultiKeyValue as _MultiKeyValue,
+    JSONFormatError
 )
 
 import zipfile
@@ -1359,6 +1363,322 @@ class GameStatisticsTracker:
 
 
 
+def _loadJSON(raw:bytes) -> jsonObject:
+    try:
+        return json.loads(raw)
+    except Exception:
+        raise InvalidSerializedData("Invalid json format")
+
+def _dumpJSON(obj:jsonObject) -> bytes:
+    return json.dumps(obj,ensure_ascii=True,separators=(",",":")).encode()
+
+
+
+#region info
+
+_SAVE_INFO_FORMAT = {
+    "Version" : int,
+    "LastSaved" : str,
+    "InternalUuid" : str,
+    "AppVersion" : str,
+    "AppSourceVersion" : str,
+    "AppSourceEnvironment" : str,
+    "AppSourceStore" : str,
+    "ModContext" : {
+        "ModSignatures" : [
+            {
+                "Id" : str,
+                "Version" : str,
+                "AffectsSaveGames" : bool,
+                "ModTitle" : str
+            }
+        ]
+    },
+    "BinaryDataCheckpoints" : bool,
+    "TotalPlaytime" : float,
+    "ResearchProgress" : float,
+    "StructureCount" : int,
+    "CheatsUsed" : bool,
+    "Completed" : bool,
+    "Parameters" : {
+        "Seed" : int,
+        "GameModeId" : str,
+        "SavegameName" : str,
+        "DifficultyParameters" : _Optional({
+            "ResearchShapeCostMultiplier" : _Optional(int,100),
+            "ChunkLimitMultiplier" : _Optional(int,100),
+            "BlueprintCostMultiplier" : _Optional(int,100)
+        },lambda: {}),
+        "ScenarioParameters" : _Optional({
+            "MapGenerationParameters" : _Optional({
+                "FluidsSpawnPrimaryColors" : _Optional(bool,True),
+                "FluidsSpawnSecondaryColors" : _Optional(bool,False),
+                "FluidsSpawnTertiaryColors" : _Optional(bool,False),
+                "FluidPatchLikelinessPercent" : _Optional(int,15),
+                "FluidPatchBaseSize" : _Optional(int,2),
+                "FluidPatchSizeGrowPercentPerChunk" : _Optional(int,70),
+                "FluidPatchMaxSize" : _Optional(int,4),
+                "ShapePatchLikelinessPercent" : _Optional(int,30),
+                "ShapePatchBaseSize" : _Optional(int,2),
+                "ShapePatchSizeGrowPercentPerChunk" : _Optional(int,70),
+                "ShapePatchMaxSize" : _Optional(int,5),
+                "ShapePatchShapeColorfulnessPercent" : _Optional(int,50),
+                "ShapePatchRareShapeLikelinessPercent" : _Optional(int,30),
+                "ShapePatchVeryRareShapeLikelinessPercent" : _Optional(int,10),
+                "SpiralGeneration" : _Optional(bool,False),
+                "SpiralThickness" : _Optional(float,1.0),
+                "SpiralTwist" : _Optional(float,1.0),
+                "ShapePatchGenerationLikeliness" : _Optional(
+                    [
+                        {
+                            "GenerationType" : int,
+                            "MinimumDistanceToOrigin" : int,
+                            "Weight" : int,
+                            "MaximumDistanceToOrigin" : _Optional(int,-1)
+                        }
+                    ],
+                    lambda: [{
+                        "GenerationType" : 2,
+                        "MinimumDistanceToOrigin" : 0,
+                        "Weight" : 100
+                    }]
+                )
+            },lambda: {}),
+            "GameRuleParameters" : _Optional({
+                "RuleIds" : _Optional([str],lambda: [])
+            },lambda: {}),
+            "ScenarioId" : _Optional(str,"default-scenario")
+        },lambda: {})
+    }
+}
+
+_saveInfoKeyMappings = {}
+
+# todo : some classes will need to be moved to the research module
+
+@dataclass
+class ModSignature:
+    id:str
+    version:str # don't bother parsing semver
+    affectsSavegames:bool
+    title:str
+
+_saveInfoKeyMappings[ModSignature] = {
+    "affectsSavegames" : "AffectsSaveGames",
+    "title" : "ModTitle"
+}
+
+@dataclass
+class DifficultyParameters:
+    researchShapeCostMultiplier:int
+    chunkLimitMultiplier:int
+    blueprintCostMultiplier:int
+
+_saveInfoKeyMappings[DifficultyParameters] = {}
+
+class MapShapeGenerationType(enum.Enum):
+    uncoloredHalfShape = 0
+    uncoloredAlmostFullShape = 1
+    uncoloredFullShape = 2
+    uncoloredFullShapePure = 3
+    primaryColorHalfShape = 4
+    primaryColorAlmostFullShape = 5
+    primaryColorFullShape = 6
+    primaryColorFullShapePure = 7
+    secondaryColorHalfShape = 8
+    secondaryColorAlmostFullShape = 9
+    secondaryColorFullShape = 10
+    secondaryColorFullShapePure = 11
+    tertiaryColorHalfShape = 12
+    tertiaryColorAlmostFullShape = 13
+    tertiaryColorFullShape = 14
+    tertiaryColorFullShapePure = 15
+
+@dataclass
+class MapGenerationShapeLikeliness:
+    generationType:MapShapeGenerationType
+    minimumDistanceToOrigin:int
+    weight:int
+    maximumDistanceToOrigin:int
+
+_saveInfoKeyMappings[MapGenerationShapeLikeliness] = {}
+
+@dataclass
+class MapGenerationParameters:
+    fluidsSpawnPrimaryColors:bool
+    fluidsSpawnSecondaryColors:bool
+    fluidsSpawnTertiaryColors:bool
+    fluidPatchLikelinessPercent:int
+    fluidPatchBaseSize:int
+    fluidPatchSizeGrowPercentPerChunk:int
+    fluidPatchMaxSize:int
+    shapePatchLikelinessPercent:int
+    shapePatchBaseSize:int
+    shapePatchSizeGrowPercentPerChunk:int
+    shapePatchMaxSize:int
+    shapePatchShapeColorfulnessPercent:int
+    shapePatchRareShapeLikelinessPercent:int
+    shapePatchVeryRareShapeLikelinessPercent:int
+    spiralGeneration:bool
+    spiralThickness:float
+    spiralTwist:float
+    shapePatchGenerationLikeliness:list[MapGenerationShapeLikeliness]
+
+_saveInfoKeyMappings[MapGenerationParameters] = {}
+
+@dataclass
+class ScenarioParameters:
+    mapGenerationParameters:MapGenerationParameters
+    gameRuleIds:list[str]
+    scenario:research.Scenario
+
+_saveInfoKeyMappings[ScenarioParameters] = {
+    "gameRuleIds" : ["GameRuleParameters","RuleIds"],
+    "scenario" : "ScenarioId"
+}
+
+@dataclass
+class SavegameInfo:
+    version:int
+    lastSaved:datetime.datetime
+    internalUUID:str
+    gameVersion:str
+    createdInVersion:str
+    createdInEnvironment:str
+    createdInStore:str
+    modSignatures:list[ModSignature]
+    binaryDataCheckpoints:bool
+    playTime:float
+    researchProgress:float
+    buildingCount:int
+    cheatsEnabled:bool
+    completed:bool
+    seed:int
+    gameMode:research.GameMode
+    name:str
+    difficultyParameters:DifficultyParameters
+    scenarioParameters:ScenarioParameters
+
+_saveInfoKeyMappings[SavegameInfo] = {
+    "internalUUID" : "InternalUuid",
+    "gameVersion" : "AppVersion",
+    "createdInVersion" : "AppSourceVersion",
+    "createdInEnvironment" : "AppSourceEnvironment",
+    "createdInStore" : "AppSourceStore",
+    "modSignatures" : ["ModContext","ModSignatures"],
+    "playTime" : "TotalPlaytime",
+    "buildingCount" : "StructureCount",
+    "cheatsEnabled" : "CheatsUsed",
+    "seed" : ["Parameters","Seed"],
+    "gameMode" : ["Parameters","GameModeId"],
+    "name" : ["Parameters","SavegameName"],
+    "difficultyParameters" : ["Parameters","DifficultyParameters"],
+    "scenarioParameters" : ["Parameters","ScenarioParameters"],
+}
+
+def _decodeSaveInfo(raw:bytes) -> SavegameInfo:
+
+    def specialCases[T](
+        rawObj:jsonObject,
+        toClass:type[T],
+        notASpecialCase:object,
+        decode:_gameObjectsSerializer.jsonObjToCustomObjInnerFunc
+    ) -> T|object:
+
+        if toClass == MapShapeGenerationType:
+            if rawObj not in MapShapeGenerationType:
+                raise InvalidSerializedData(
+                    "Invalid value for "
+                    + MapShapeGenerationType.__name__
+                    + f" : {rawObj}"
+                )
+            return MapShapeGenerationType(rawObj)
+
+        if toClass == research.Scenario:
+            if rawObj not in research.ingameScenarios:
+                raise InvalidSerializedData(f"Unknown scenario ID : {rawObj}")
+            return research.ingameScenarios[rawObj]
+
+        if toClass == datetime.datetime:
+            try:
+                dt = datetime.datetime.fromisoformat(rawObj)
+            except Exception:
+                raise InvalidSerializedData("Invalid datetime")
+            return dt
+
+        if toClass == research.GameMode:
+            if rawObj not in research.GameMode:
+                raise InvalidSerializedData(f"Unknown game mode ID : {rawObj}")
+            return research.GameMode(rawObj)
+
+        return notASpecialCase
+
+    rawObj = _loadJSON(raw)
+
+    try:
+        formatSafe, warnings = _gameObjectsSerializer.getJSONObjWithFormat(
+            rawObj,
+            _SAVE_INFO_FORMAT
+        )
+    except JSONFormatError as e:
+        raise InvalidSerializedData(f"Error in json format : {e}")
+
+    # todo : remove
+    if len(warnings) > 0:
+        print(f"Save info : {warnings}")
+
+    try:
+        decoded = _gameObjectsSerializer.jsonObjToCustomObj(
+            formatSafe,
+            SavegameInfo,
+            _saveInfoKeyMappings,
+            specialCases
+        )
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while converting objects : {e}")
+
+    return decoded
+
+def _encodeSaveInfo(saveInfo:SavegameInfo) -> bytes:
+
+    def specialCases(
+        obj:typing.Any,
+        notASpecialCase:object,
+        encode:_gameObjectsSerializer.customObjToJSONObjInnerFunc
+    ) -> jsonObject|_MultiKeyValue|object:
+
+        if isinstance(obj,MapShapeGenerationType):
+            return obj.value
+
+        if isinstance(obj,research.Scenario):
+            return obj.id
+
+        if isinstance(obj,datetime.datetime):
+            return obj.isoformat()
+
+        if isinstance(obj,research.GameMode):
+            return obj.value
+
+        return notASpecialCase
+
+    obj = _gameObjectsSerializer.customObjToJSONObj(
+        saveInfo,
+        _saveInfoKeyMappings,
+        specialCases
+    )
+
+    rawObj = _gameObjectsSerializer.encodeJSONObjWithFormat(
+        obj,
+        _SAVE_INFO_FORMAT,
+        True
+    )
+
+    return _dumpJSON(rawObj)
+
+#endregion
+
+
+
 #region savegame
 
 class FilePaths(enum.Enum):
@@ -1390,7 +1710,7 @@ class SavegameMap:
 class Savegame:
     map:SavegameMap
     statistics:GameStatisticsTracker
-    temp_info:bytes
+    info:SavegameInfo
     temp_research:bytes
     temp_player:bytes
 
@@ -1435,14 +1755,16 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
                     if _isNumber(index):
                         fileList.append((int(index),f.read(name)))
 
-    tempSaveInfo = json.loads(saveInfoRaw)
-    useCheckpoints = tempSaveInfo["BinaryDataCheckpoints"]
-    tempScenario = research.ingameScenarios[
-        tempSaveInfo["Parameters"]["ScenarioParameters"]["ScenarioId"]
-    ]
+    try:
+        saveInfo = _decodeSaveInfo(saveInfoRaw)
+    except InvalidSerializedData as e:
+        raise InvalidSerializedData(f"Error while reading save info : {e}")
+
+    useCheckpoints = saveInfo.binaryDataCheckpoints
+    scenario = saveInfo.scenarioParameters.scenario
     serializer = GameObjectsSerializer(
-        tempScenario.researchConfig.shapesConfig,
-        tempScenario.researchConfig.colorScheme
+        scenario.researchConfig.shapesConfig,
+        scenario.researchConfig.colorScheme
     )
 
     stringsLUT = StringLUTReadWrite()
@@ -1542,19 +1864,18 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
             decodedCargo
         ),
         decodedStatistics,
-        saveInfoRaw,
+        saveInfo,
         researchRaw,
         playerRaw
     )
 
 def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> None:
 
-    tempSaveInfo = json.loads(savegame.temp_info)
-    useCheckpoints = tempSaveInfo["BinaryDataCheckpoints"]
-    tempScenario = research.ingameScenarios[tempSaveInfo["Parameters"]["ScenarioParameters"]["ScenarioId"]]
+    useCheckpoints = savegame.info.binaryDataCheckpoints
+    scenario = savegame.info.scenarioParameters.scenario
     serializer = GameObjectsSerializer(
-        tempScenario.researchConfig.shapesConfig,
-        tempScenario.researchConfig.colorScheme
+        scenario.researchConfig.shapesConfig,
+        scenario.researchConfig.colorScheme
     )
     stringsLUT = StringLUTReadWrite()
 
@@ -1623,10 +1944,12 @@ def encodeSavegame(savegame:Savegame,file:str|os.PathLike|typing.IO[bytes]) -> N
     stringsLUT.serialize(stringsLUTWriter)
     encodedStringsLUT = stringsLUTWriter.toBytes()
 
+    encodedSaveInfo = _encodeSaveInfo(savegame.info)
+
     with zipfile.ZipFile(file,"w") as f:
         f.writestr(FilePaths.stringsLUT.value,encodedStringsLUT)
         f.writestr(FilePaths.statistics.value,encodedStatistics)
-        f.writestr(FilePaths.saveInfo.value,savegame.temp_info)
+        f.writestr(FilePaths.saveInfo.value,encodedSaveInfo)
         f.writestr(FilePaths.research.value,savegame.temp_research)
         f.writestr(FilePaths.player.value,savegame.temp_player)
         f.writestr(FilePaths.simulationState.value,encodedSimState)
