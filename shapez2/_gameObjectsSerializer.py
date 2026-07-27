@@ -2037,7 +2037,7 @@ def jsonObjToCustomObj[T](
                     newObj.append(inner(elem,typeArgs[0]))
                 return newObj
 
-            if typeOrigin == typing.Union:
+            if typeOrigin == types.UnionType:
                 assert typeArgs[1] == types.NoneType
                 if rawObj is None:
                     return None
@@ -2120,7 +2120,7 @@ def customObjToJSONObj(
                     newObj.append(newElem)
                 return newObj
 
-            if typeOrigin == typing.Union:
+            if typeOrigin == types.UnionType:
                 assert typeArgs[1] == types.NoneType
                 if obj is None:
                     return None
