@@ -1501,6 +1501,15 @@ class MapGenerationShapeLikeliness:
     weight:int
     maximumDistanceToOrigin:int
 
+    def _update(self) -> None:
+        MAX_GENERATION_DISTANCE = 50 # todo : move
+        if not (0 <= self.weight <= 100_000):
+            raise InvalidSerializedData("Weight not in range [0;100000]")
+        if not (0 <= self.minimumDistanceToOrigin <= MAX_GENERATION_DISTANCE):
+            raise InvalidSerializedData(f"Min distance not in range [0;{MAX_GENERATION_DISTANCE}]")
+        if self.maximumDistanceToOrigin > MAX_GENERATION_DISTANCE:
+            raise InvalidSerializedData(f"Max distance can't be more than {MAX_GENERATION_DISTANCE}")
+
 _saveInfoKeyMappings[MapGenerationShapeLikeliness] = {}
 
 @dataclass
@@ -1636,6 +1645,16 @@ def _decodeSaveInfo(raw:bytes) -> SavegameInfo:
         )
     except InvalidSerializedData as e:
         raise InvalidSerializedData(f"Error while converting objects : {e}")
+
+    for i,s in enumerate(decoded.scenarioParameters.mapGenerationParameters.shapePatchGenerationLikeliness):
+        try:
+            s._update()
+        except InvalidSerializedData as e:
+            raise InvalidSerializedData(
+                "Error in "
+                + MapGenerationShapeLikeliness.__name__
+                + f" #{i} : {e}"
+            )
 
     return decoded
 
