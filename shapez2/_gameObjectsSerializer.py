@@ -267,22 +267,13 @@ class BinaryStreamWriterWithStringLUT(BinaryStreamWriter):
 
 #region polymorphic
 
-def serializationId(id:str):
-    def wrapper(cls):
-        # stop type hints from thinking that `cls` is strictly
-        # `GenericSimulationState` and that it can't be a subclass
-        if not typing.TYPE_CHECKING:
-            if not issubclass(cls,savegameObjects.GenericSimulationState):
-                raise ValueError(
-                    cls.__name__
-                    + " doesn't inherit from "
-                    + savegameObjects.GenericSimulationState.__name__
-                )
-        cls._serializationId = id
-        return cls
-    return wrapper
+class PolymorphicSerializable:
+    def __init_subclass__(cls,/,serializationID:str|None,**kwargs):
+        super().__init_subclass__(**kwargs)
+        if serializationID is not None:
+            cls._serializationId = serializationID
 
-class PolymorphicSerializer[T]:
+class PolymorphicSerializer[T:PolymorphicSerializable]:
 
     def __init__(self,supportedTypes:list[type[T]],serializer:"GameObjectsSerializer"):
 

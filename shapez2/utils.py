@@ -134,3 +134,14 @@ def loadDirection(raw:dict) -> DirectionType:
         "pos" : loadPos(raw.get("Position_L",{})),
         "rot" : Rotation(raw.get("Direction_L",0))
     }
+
+class HasUniqueID:
+    """If using this on a dataclass, don't forget to set `eq=False` !"""
+
+    def __eq__(self,other:object) -> bool:
+        if not isinstance(other,type(self)):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)

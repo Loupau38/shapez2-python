@@ -333,8 +333,8 @@ _keyMappings:dict[type,dict[str,str|list[str]]] = {}
 type _jsonObj = str|int|float|bool|None|list[_jsonObj]|dict[str,_jsonObj]
 type _encodeOverrideReturn = tuple[list[str],dict[str,_jsonObj]]
 
-@dataclass
-class FutureUpgrade:
+@dataclass(eq=False)
+class FutureUpgrade(utils.HasUniqueID):
     id:str
 
 @dataclass
@@ -480,8 +480,8 @@ class Rewards:
         ]
         self.islands = [i for ig in self.islandGroups for i in ig.islands]
 
-@dataclass
-class Milestone:
+@dataclass(eq=False)
+class Milestone(utils.HasUniqueID):
     id:str
     video:str
     previewImage:str
@@ -501,8 +501,8 @@ _keyMappings[Milestone] = {
     "rewards" : ["Rewards","Rewards"]
 }
 
-@dataclass
-class SideTask:
+@dataclass(eq=False)
+class SideTask(utils.HasUniqueID):
     id:str
     isFollowupForMilestone:bool
     costs:list[ShapeCost]
@@ -536,8 +536,8 @@ _keyMappings[Cost] = {
     "amount" : "Amount"
 }
 
-@dataclass
-class SideUpgrade:
+@dataclass(eq=False)
+class SideUpgrade(utils.HasUniqueID):
     id:str
     previewImage:str
     video:str|None
@@ -597,8 +597,8 @@ _keyMappings[LinearUpgradeLevel] = {
     "cost" : "Cost"
 }
 
-@dataclass
-class LinearUpgrade:
+@dataclass(eq=False)
+class LinearUpgrade(utils.HasUniqueID):
     id:str
     title:translations.MaybeTranslationString
     displayType:LinearUpgradeDisplayType
@@ -690,8 +690,8 @@ class OperatorLevelGoalLineType(Enum):
     randomNoCrystals = "randomNoCrystals"
     randomCrystals = "randomCrystals"
 
-@dataclass
-class OperatorLevelGoalLine:
+@dataclass(eq=False)
+class OperatorLevelGoalLine(utils.HasUniqueID):
     id:str
     type:OperatorLevelGoalLineType
     shape:gameObjects.Shape|None
@@ -730,8 +730,8 @@ _keyMappings[OperatorLevelConfig] = {
     "rewards" : "Rewards"
 }
 
-@dataclass
-class Mechanic:
+@dataclass(eq=False)
+class Mechanic(utils.HasUniqueID):
     id:str
     title:translations.MaybeTranslationString
     description:translations.MaybeTranslationString
@@ -774,8 +774,8 @@ class MechanicsConfig:
         self.operatorLevel = inner2(3)
         self.trainHubDelivery = inner2(4)
 
-@dataclass
-class Scenario:
+@dataclass(eq=False)
+class Scenario(utils.HasUniqueID):
     gameVersion:int
     id:str
     isTutorial:bool
@@ -858,25 +858,6 @@ _keyMappings[Scenario] = {
     "mechanicsConfig" : "Mechanics",
     "_rawRailColorsConfig" : ["RailColorsConfig","RailColors"]
 }
-
-def _genericEq(self,other:object) -> bool:
-    if not isinstance(other,type(self)):
-        return NotImplemented
-    return self.id == other.id
-def _genericHash(self) -> int:
-    return hash(self.id)
-for _cls in (
-    FutureUpgrade,
-    Milestone,
-    SideTask,
-    SideUpgrade,
-    LinearUpgrade,
-    OperatorLevelGoalLine,
-    Mechanic,
-    Scenario
-):
-    _cls.__eq__ = _genericEq
-    _cls.__hash__ = _genericHash
 
 class ScenarioDecodeError(Exception): ...
 

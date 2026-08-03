@@ -18,7 +18,7 @@ class IslandTile:
     pos:Pos
     buildArea:list[Rect]
 
-class Island:
+class Island(utils.HasUniqueID):
 
     def __init__(
         self,
@@ -41,27 +41,11 @@ class Island:
                     area.size
                 ))
 
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,Island):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
-@dataclass
-class IslandGroup:
+@dataclass(eq=False)
+class IslandGroup(utils.HasUniqueID):
     id:str
     title:translations.MaybeTranslationString
     islands:list[Island]
-
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,IslandGroup):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
 
 def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
 

@@ -1,3 +1,5 @@
+from . import utils
+
 import typing
 from dataclasses import dataclass
 import enum
@@ -18,34 +20,18 @@ class Color:
     def __hash__(self) -> int:
         return hash(self.code)
 
-@dataclass
-class ColorSkin:
+@dataclass(eq=False)
+class ColorSkin(utils.HasUniqueID):
     id:str
     colors:dict[Color,tuple[int,int,int]]
 
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,ColorSkin):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
-@dataclass
-class ColorMode:
+@dataclass(eq=False)
+class ColorMode(utils.HasUniqueID):
     id:str
     colorSkin:ColorSkin
     colorblindPatterns:bool
 
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,ColorMode):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
-class ColorScheme:
+class ColorScheme(utils.HasUniqueID):
 
     def __init__(
         self,
@@ -71,14 +57,6 @@ class ColorScheme:
     def getMixResult(self,color1:Color,color2:Color) -> Color:
         return self.mixingRecipes[frozenset((color1,color2))]
 
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,ColorScheme):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
 @dataclass
 class ShapePartType:
     code:str
@@ -96,7 +74,7 @@ class ShapePartType:
     def __hash__(self) -> int:
         return hash(self.code)
 
-class ShapesConfiguration:
+class ShapesConfiguration(utils.HasUniqueID):
 
     def __init__(
         self,
@@ -115,14 +93,6 @@ class ShapesConfiguration:
         self.mapGenerationVeryRareParts = [p[0] for p in parts if p[1] == 2]
         self.parts = [p[0] for p in parts]
         self.partsByCode = {p.code:p for p in self.parts}
-
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,ShapesConfiguration):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
 
 from . import shapeCodes # circular import workaround
 

@@ -4,35 +4,19 @@ import json
 import importlib.resources
 import enum
 
-class BuildingVariant:
+class BuildingVariant(utils.HasUniqueID):
 
     def __init__(self,id:str,title:translations.MaybeTranslationString) -> None:
         self.id = id
         self.title = title
         self.internalVariants:list[BuildingInternalVariant] = []
 
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,BuildingVariant):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
-
-class BuildingInternalVariant:
+class BuildingInternalVariant(utils.HasUniqueID):
 
     def __init__(self,id:str,tiles:list[utils.Pos],fromBuildingVariant:BuildingVariant) -> None:
         self.id = id
         self.tiles = tiles
         self.fromBuildingVariant = fromBuildingVariant
-
-    def __eq__(self,other:object) -> bool:
-        if not isinstance(other,BuildingInternalVariant):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        return hash(self.id)
 
 def _loadBuildings() -> tuple[dict[str,BuildingVariant],dict[str,BuildingInternalVariant]]:
 

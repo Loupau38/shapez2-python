@@ -8,6 +8,7 @@ from . import (
     islands,
     pygamePIL,
     research,
+    savegameObjects,
     savegames,
     shapeCodes,
     shapeOperations,
