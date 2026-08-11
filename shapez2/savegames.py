@@ -1,4 +1,4 @@
-from . import buildings, gameObjects, utils, islands, _gameObjectsSerializer, research, savegameObjects
+from . import buildings, gameObjects, utils, islands, _gameObjectsSerializer, scenarios, savegameObjects
 from ._gameObjectsSerializer import (
     Checkpoint,
     BinaryStreamReader,
@@ -1539,7 +1539,7 @@ _saveInfoKeyMappings[MapGenerationParameters] = {}
 class ScenarioParameters:
     mapGenerationParameters:MapGenerationParameters
     gameRuleIds:list[str]
-    scenario:research.Scenario
+    scenario:scenarios.Scenario
 
 _saveInfoKeyMappings[ScenarioParameters] = {
     "gameRuleIds" : ["GameRuleParameters","RuleIds"],
@@ -1563,7 +1563,7 @@ class SavegameInfo:
     cheatsEnabled:bool
     completed:bool
     seed:int
-    gameMode:research.GameMode
+    gameMode:scenarios.GameMode
     name:str
     difficultyParameters:DifficultyParameters
     scenarioParameters:ScenarioParameters
@@ -1603,10 +1603,10 @@ def _decodeSaveInfo(raw:bytes) -> SavegameInfo:
                 )
             return MapShapeGenerationType(rawObj)
 
-        if toClass == research.Scenario:
-            if rawObj not in research.ingameScenarios:
+        if toClass == scenarios.Scenario:
+            if rawObj not in scenarios.ingameScenarios:
                 raise InvalidSerializedData(f"Unknown scenario ID : {rawObj}")
-            return research.ingameScenarios[rawObj]
+            return scenarios.ingameScenarios[rawObj]
 
         if toClass == datetime.datetime:
             try:
@@ -1615,10 +1615,10 @@ def _decodeSaveInfo(raw:bytes) -> SavegameInfo:
                 raise InvalidSerializedData("Invalid datetime")
             return dt
 
-        if toClass == research.GameMode:
-            if rawObj not in research.GameMode:
+        if toClass == scenarios.GameMode:
+            if rawObj not in scenarios.GameMode:
                 raise InvalidSerializedData(f"Unknown game mode ID : {rawObj}")
-            return research.GameMode(rawObj)
+            return scenarios.GameMode(rawObj)
 
         return notASpecialCase
 
@@ -1669,13 +1669,13 @@ def _encodeSaveInfo(saveInfo:SavegameInfo) -> bytes:
         if isinstance(obj,MapShapeGenerationType):
             return obj.value
 
-        if isinstance(obj,research.Scenario):
+        if isinstance(obj,scenarios.Scenario):
             return obj.id
 
         if isinstance(obj,datetime.datetime):
             return obj.isoformat()
 
-        if isinstance(obj,research.GameMode):
+        if isinstance(obj,scenarios.GameMode):
             return obj.value
 
         return notASpecialCase
