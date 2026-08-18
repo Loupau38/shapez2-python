@@ -6,6 +6,27 @@ import importlib.resources
 from dataclasses import dataclass
 import typing
 
+ISLAND_GROUP_TITLE_OVERRIDES = {
+    "FoundationGroup_1x1": "1x1 Foundation",
+    "FoundationGroup_1x2": "1x2 Foundation",
+    "FoundationGroup_1x3": "1x3 Foundation",
+    "FoundationGroup_1x4": "1x4 Foundation",
+    "FoundationGroup_2x2": "2x2 Foundation",
+    "FoundationGroup_2x3": "2x3 Foundation",
+    "FoundationGroup_2x4": "2x4 Foundation",
+    "FoundationGroup_3x3": "3x3 Foundation",
+    "FoundationGroup_T4": "T4 Foundation",
+    "FoundationGroup_L3": "L3 Foundation",
+    "FoundationGroup_L4": "L4 Foundation",
+    "FoundationGroup_S4": "S4 Foundation",
+    "FoundationGroup_C5": "C5 Foundation",
+    "RailLiftUp1X1X2Group": "Rail Up 1 Floor",
+    "RailLiftDown1X1X2Group": "Rail Down 1 Floor",
+    "RailLiftUp1X1X3Group": "Rail Up 2 Floors",
+    "RailLiftDown1X1X3Group": "Rail Down 2 Floors",
+    "HUB": "Vortex"
+}
+
 ISLAND_SIZE = 20
 CHUNKS_PER_SUPER_CHUNK = 64 # not entierly sure where to put this
 
@@ -25,7 +46,7 @@ class Island(utils.HasUniqueID):
         id:str,
         title:translations.MaybeTranslationString,
         tiles:list[IslandTile],
-        islandUnitCost:int|float,
+        islandUnitCost:int,
         group:"IslandGroup"
     ) -> None:
         self.id = id
@@ -297,7 +318,7 @@ def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
             islandRaw["Id"],
             translations.MaybeTranslationString(islandTitle),
             generatedIslandTiles,
-            islandRaw.get("IslandUnitCost",len(generatedIslandTiles)),
+            islandRaw.get("IslandUnitCost",len(generatedIslandTiles)*2),
             curIslandGroup
         )
         allIslands[islandRaw["Id"]] = curIsland

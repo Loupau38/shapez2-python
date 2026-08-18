@@ -1,20 +1,23 @@
 import json
 import os
+import sys
+import shutil
 
-GAME_VERSION = 1122
-BASE_PATH = os.path.expandvars(f"%LOCALAPPDATA%low\\tobspr Games\\shapez 2\\basedata-v{GAME_VERSION}\\")
+GAME_VERSION = 1138
+BASE_PATH = os.environ["shapez2_assets_path"] + "/"
+EXTRACTED_BASE_PATH = "./shapez2/gameFiles/"
 
-BUILDINGS_PATH = BASE_PATH + "buildings.json"
-ADDITIONAL_BUILDINGS_PATH = "./shapez2/gameFiles/additionalBuildings.json"
-TRANSLATIONS_PATH = BASE_PATH + "translations-en-US.json"
-IDENTIFIERS_PATH = BASE_PATH + "identifiers.json"
-SCENARIOS_PATH = BASE_PATH + "scenarios\\"
+BUILDINGS_PATH = BASE_PATH + "misc/buildings.json"
+ISLANDS_PATH = BASE_PATH + "misc/islands.json"
+TRANSLATIONS_PATH = BASE_PATH + "misc/translations-en-US.json"
+IDENTIFIERS_PATH = BASE_PATH + "misc/identifiers.json"
+SCENARIOS_PATH = BASE_PATH + "scenarios/"
 
-EXTRACTED_BUILDINGS_PATH = "./shapez2/gameFiles/buildings.json"
-EXTRACTED_ISLANDS_PATH = "./shapez2/gameFiles/islands.json"
-EXTRACTED_TRANSLATIONS_PATH = "./shapez2/gameFiles/translations-en-US.json"
-EXTRACTED_ICONS_PATH = "./shapez2/gameFiles/icons.json"
-EXTRACTED_SCENARIOS_PATH = "./shapez2/gameFiles/"
+EXTRACTED_BUILDINGS_PATH = EXTRACTED_BASE_PATH + "buildings.json"
+EXTRACTED_ISLANDS_PATH = EXTRACTED_BASE_PATH + "islands.json"
+EXTRACTED_TRANSLATIONS_PATH = EXTRACTED_BASE_PATH + "translations-en-US.json"
+EXTRACTED_ICONS_PATH = EXTRACTED_BASE_PATH + "icons.json"
+EXTRACTED_SCENARIOS_PATH = EXTRACTED_BASE_PATH + "scenarios/"
 
 def extractKeys(fromDict:dict,toDict:dict,keys:list[str]) -> dict:
     for key in keys:
@@ -26,19 +29,13 @@ def main() -> None:
     if os.getcwd().split("\\")[-1] != "s2 py package":
         print("Must be executed from 's2 py package' directory")
         input()
-        exit()
+        sys.exit()
 
-    # research
+    # scenarios
 
-    scenariosRaw = []
     for dirEntry in os.scandir(SCENARIOS_PATH):
         if dirEntry.is_file():
-            with open(dirEntry.path,encoding="utf-8") as f:
-                scenariosRaw.append((dirEntry.name,json.load(f)))
-
-    for name,scenario in scenariosRaw:
-        with open(EXTRACTED_SCENARIOS_PATH+name,"w",encoding="utf-8") as f:
-            json.dump(scenario,f,indent=4,ensure_ascii=True)
+            shutil.copy(dirEntry.path,EXTRACTED_SCENARIOS_PATH)
 
 
 
@@ -46,29 +43,15 @@ def main() -> None:
 
     with open(BUILDINGS_PATH,encoding="utf-8") as f:
         buildingsRaw = json.load(f)
-    with open(ADDITIONAL_BUILDINGS_PATH,encoding="utf-8") as f:
-        additionalBuildings = json.load(f)
 
-    toRemoveBuildings = []
-    for ab in additionalBuildings:
-        if ab["Id"] in (b["Id"] for b in buildingsRaw):
-            toRemoveBuildings.append(ab["Id"])
-        else:
-            print(f"Additonal building {ab['Id']} not in base buildings")
-
-    buildingsRaw = [b for b in buildingsRaw if b["Id"] not in toRemoveBuildings]
-    extractedBuildings:dict[str,str|list] = {"GameVersion":GAME_VERSION,"Buildings":[]}
-    for internalVariantListRaw in additionalBuildings+buildingsRaw:
-        curInternalVariantListKeys = ["Id"]
-        if internalVariantListRaw.get("Title") is not None:
-            curInternalVariantListKeys.append("Title")
-        extractedInternalVariantList = extractKeys(internalVariantListRaw,{},curInternalVariantListKeys)
+    extractedBuildings:dict[str,list] = {"Buildings":[]}
+    for internalVariantListRaw in buildingsRaw:
+        extractedInternalVariantList = extractKeys(internalVariantListRaw,{},["Id"])
         extractedInternalVariantList["InternalVariants"] = []
         for buildingRaw in internalVariantListRaw["InternalVariants"]:
             extractedBuilding = extractKeys(buildingRaw,{},["Id","Tiles"])
             extractedInternalVariantList["InternalVariants"].append(extractedBuilding)
         extractedBuildings["Buildings"].append(extractedInternalVariantList)
-    extractedBuildings["Buildings"] = sorted(extractedBuildings["Buildings"],key=lambda b: b["Id"])
 
     with open(EXTRACTED_BUILDINGS_PATH,"w",encoding="utf-8") as f:
         json.dump(extractedBuildings,f,indent=4,ensure_ascii=True)
@@ -76,12 +59,7 @@ def main() -> None:
 
 
     # islands
-    with open(EXTRACTED_ISLANDS_PATH,encoding="utf-8") as f:
-        islandsRaw = json.load(f)
-    islandsRaw["GameVersion"] = GAME_VERSION
-    print("Check if islands have changed and remember to use /blueprint-creator all-buildings and all-islands")
-    with open(EXTRACTED_ISLANDS_PATH,"w",encoding="utf-8") as f:
-        json.dump(islandsRaw,f,indent=4,ensure_ascii=True)
+    shutil.copy(ISLANDS_PATH,EXTRACTED_ISLANDS_PATH)
 
 
 
@@ -90,7 +68,6 @@ def main() -> None:
         translationsRaw = json.load(f)
     with open(EXTRACTED_TRANSLATIONS_PATH,"w",encoding="utf-8") as f:
         json.dump({
-            "GameVersion" : GAME_VERSION,
             "Translations" : translationsRaw["Entries"]
         },f,ensure_ascii=False,indent=4)
 
@@ -101,8 +78,7 @@ def main() -> None:
         identifiersRaw = json.load(f)
     with open(EXTRACTED_ICONS_PATH,"w",encoding="utf-8") as f:
         json.dump({
-            "GameVersion" : GAME_VERSION,
-            "Icons":sorted(identifiersRaw["IconIds"])
+            "Icons" : identifiersRaw["IconIds"]
         },f,ensure_ascii=False,indent=4)
 
 

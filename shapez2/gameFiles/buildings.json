@@ -1,5 +1,4 @@
 {
-    "GameVersion": 1122,
     "Buildings": [
         {
             "Id": "BeltDefaultVariant",
@@ -805,6 +804,166 @@
                         {
                             "X": 0,
                             "Y": 0,
+                            "Z": 0
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "Id": "Display2x2Variant",
+            "InternalVariants": [
+                {
+                    "Id": "Display2x2InternalVariant",
+                    "Tiles": [
+                        {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": -1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": -1,
+                            "Z": 0
+                        }
+                    ]
+                },
+                {
+                    "Id": "Display2x2InternalVariantMirrored",
+                    "Tiles": [
+                        {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": 1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 1,
+                            "Z": 0
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "Id": "Display3x3Variant",
+            "InternalVariants": [
+                {
+                    "Id": "Display3x3InternalVariant",
+                    "Tiles": [
+                        {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": -1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": -1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": -1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": -2,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": -2,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": -2,
+                            "Z": 0
+                        }
+                    ]
+                },
+                {
+                    "Id": "Display3x3InternalVariantMirrored",
+                    "Tiles": [
+                        {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": 0,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": 1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": 1,
+                            "Z": 0
+                        },
+                        {
+                            "X": 0,
+                            "Y": 2,
+                            "Z": 0
+                        },
+                        {
+                            "X": 1,
+                            "Y": 2,
+                            "Z": 0
+                        },
+                        {
+                            "X": 2,
+                            "Y": 2,
                             "Z": 0
                         }
                     ]
@@ -2166,6 +2325,21 @@
             "InternalVariants": [
                 {
                     "Id": "VirtualPinPusherDefaultInternalVariant",
+                    "Tiles": [
+                        {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 0
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "Id": "VirtualRotatorCCWVariant",
+            "InternalVariants": [
+                {
+                    "Id": "VirtualRotatorCCWInternalVariant",
                     "Tiles": [
                         {
                             "X": 0,
