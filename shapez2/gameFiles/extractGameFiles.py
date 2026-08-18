@@ -9,6 +9,7 @@ EXTRACTED_BASE_PATH = "./shapez2/gameFiles/"
 
 BUILDINGS_PATH = BASE_PATH + "misc/buildings.json"
 ISLANDS_PATH = BASE_PATH + "misc/islands.json"
+NON_BUILDABLE_ISLANDS_PATH = EXTRACTED_BASE_PATH + "nonBuildableIslands.json"
 TRANSLATIONS_PATH = BASE_PATH + "misc/translations-en-US.json"
 IDENTIFIERS_PATH = BASE_PATH + "misc/identifiers.json"
 SCENARIOS_PATH = BASE_PATH + "scenarios/"
@@ -59,7 +60,51 @@ def main() -> None:
 
 
     # islands
-    shutil.copy(ISLANDS_PATH,EXTRACTED_ISLANDS_PATH)
+    with open(ISLANDS_PATH,encoding="utf-8") as f:
+        islandsRaw = json.load(f)
+    with open(NON_BUILDABLE_ISLANDS_PATH,encoding="utf-8") as f:
+        nonBuildableIslands = json.load(f)
+
+    for island in islandsRaw["Islands"]:
+        for chunk in island["Chunks"]:
+            if island["Id"] in nonBuildableIslands:
+                chunk["BuildableTiles"] = []
+                continue
+            curRanges = []
+            curRangeStart = None
+            prevTile = None
+            curStep = None
+            rawTiles = chunk["BuildableTiles"]
+            for tile in rawTiles:
+                if prevTile is None:
+                    curRangeStart = tile
+                    prevTile = tile
+                    continue
+                if curStep is None:
+                    curStep = tile - prevTile
+                    prevTile = tile
+                    continue
+                if tile-prevTile == curStep:
+                    prevTile = tile
+                    continue
+                curRanges.append((curRangeStart,prevTile,curStep))
+                curRangeStart = tile
+                prevTile = tile
+                curStep = None
+            if curStep is not None:
+                curRanges.append((curRangeStart,tile,curStep))
+            elif prevTile is not None:
+                assert curRangeStart == tile
+                curRanges.append((curRangeStart,tile,1))
+            if sum((list(range(r[0],r[1]+1,r[2])) for r in curRanges),start=[]) != rawTiles:
+                print("Generated buildable tiles don't match raw :")
+                print(f"Raw : {",".join(str(t) for t in rawTiles)}")
+                print(f"Generated : {curRanges}")
+                raise Exception
+            chunk["BuildableTiles"] = [list(r) for r in curRanges]
+
+    with open(EXTRACTED_ISLANDS_PATH,"w",encoding="utf-8") as f:
+        json.dump(islandsRaw,f,ensure_ascii=False,indent=4)
 
 
 
