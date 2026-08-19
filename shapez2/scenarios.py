@@ -633,6 +633,7 @@ _keyMappings [InitialViewportConfig] = {
     "showAllIslandLayers" : "ShowAllIslandLayers"
 }
 
+# todo : replace this with the actual subclasses used
 _keyMappings[utils.Pos] = {
     "x" : "x",
     "y" : "y",
@@ -641,7 +642,7 @@ _keyMappings[utils.Pos] = {
 
 @dataclass
 class InitialIsland:
-    pos:utils.Pos
+    pos:utils.GlobalChunkCoordinate
     rotation:int
     type:islands.Island
 _keyMappings[InitialIsland] = {
@@ -653,8 +654,8 @@ _keyMappings[InitialIsland] = {
 @dataclass
 class FixedPatch:
     shape:gameObjects.Shape
-    pos:utils.Pos
-    tiles:list[utils.Pos]
+    pos:utils.ChunkVector
+    tiles:list[utils.ChunkVector]
 _keyMappings[FixedPatch] = {
     "shape" : "Shape",
     "pos" : "Position_LC",
@@ -663,7 +664,7 @@ _keyMappings[FixedPatch] = {
 
 @dataclass
 class StartingChunk:
-    superChunk:utils.Pos
+    superChunk:utils.SuperChunkCoordinate
     guaranteedShapePatches:list[gameObjects.Shape]
     guaranteedFluidPatches:list[gameObjects.Color]
 _keyMappings[StartingChunk] = {

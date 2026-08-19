@@ -6,7 +6,7 @@ from . import (
     versions,
     gameObjects
 )
-from .utils import Rotation, Pos, Size
+from .utils import Rotation, TileVector, ChunkVector, Size
 from .buildings import BuildingIds
 
 import gzip
@@ -31,7 +31,7 @@ PREFIX = "SHAPEZ2"
 SEPARATOR = "-"
 SUFFIX = "$"
 
-ISLAND_ROTATION_CENTER = utils.FloatPos(*([(islands.ISLAND_SIZE/2)-.5]*2))
+ISLAND_ROTATION_CENTER = utils.FloatPos(*([(utils.TILES_PER_CHUNK/2)-.5]*2))
 
 NUM_BP_ICONS = 4
 
@@ -106,7 +106,7 @@ class BuildingEntry:
 
     def __init__(
         self,
-        pos:Pos,
+        pos:TileVector,
         rotation:Rotation,
         type:buildings.BuildingInternalVariant,
         extra:BuildingExtraData|BuildingExtraDataHolder|None=None
@@ -147,7 +147,7 @@ class BuildingBlueprint:
         else:
             self.icons = icons
 
-    def toTileDict(self) -> dict[Pos,"TileEntry[BuildingEntry]"]:
+    def toTileDict(self) -> dict[TileVector,"TileEntry[BuildingEntry]"]:
         return _getTileDictFromEntryList(self.entries)
 
     def getSize(self) -> Size:
@@ -178,7 +178,8 @@ class BuildingBlueprint:
 class IslandEntry:
 
     def __init__(
-        self,pos:Pos,
+        self,
+        pos:ChunkVector,
         rotation:Rotation,
         type:islands.Island,
         extra:IslandExtraData|IslandExtraDataHolder|None=None,
@@ -223,7 +224,7 @@ class IslandBlueprint:
         else:
             self.icons = icons
 
-    def toTileDict(self) -> dict[Pos,"TileEntry[IslandEntry]"]:
+    def toTileDict(self) -> dict[ChunkVector,"TileEntry[IslandEntry]"]:
         return _getTileDictFromEntryList(self.entries)
 
     def getSize(self) -> Size:
@@ -274,11 +275,7 @@ class Blueprint:
                     continue
                 for building in island.buildingBP.entries:
                     tempBuildingList.append(BuildingEntry(
-                        Pos(
-                            (island.pos.x*islands.ISLAND_SIZE) + building.pos.x,
-                            (island.pos.y*islands.ISLAND_SIZE) + building.pos.y,
-                            (island.pos.z*islands.ISLAND_SIZE) + building.pos.z
-                        ),
+                        island.pos.toTileVector()+building.pos,
                         building.rotation,
                         building.type,
                         building.extra
@@ -356,16 +353,23 @@ def _omitKeyIfDefault(dict:dict,key:str,value:int|str|None) -> None:
     if value not in (None,0,""):
         dict[key] = value
 
-_BuildingOrIslandT = typing.TypeVar("_BuildingOrIslandT",bound=BuildingEntry|IslandEntry)
-def _getTileDictFromEntryList(entryList:list[_BuildingOrIslandT]) -> dict[Pos,TileEntry[_BuildingOrIslandT]]:
-    tileDict:dict[Pos,TileEntry[_BuildingOrIslandT]] = {}
+@typing.overload
+def _getTileDictFromEntryList(entryList:list[BuildingEntry]) -> dict[TileVector,TileEntry[BuildingEntry]]: ...
+
+@typing.overload
+def _getTileDictFromEntryList(entryList:list[IslandEntry]) -> dict[ChunkVector,TileEntry[IslandEntry]]: ...
+
+def _getTileDictFromEntryList[T:(BuildingEntry|IslandEntry)](
+    entryList:list[T]
+) -> dict[TileVector|ChunkVector,TileEntry[T]]:
+    tileDict:dict[TileVector|ChunkVector,TileEntry[T]] = {}
     for entry in entryList:
         if isinstance(entry,BuildingEntry):
             curTiles = entry.type.tiles
         else:
-            curTiles = [t.pos for t in entry.type.tiles]
+            curTiles = [c for c in entry.type.chunks.keys()]
         curTiles = [t.rotateCW(entry.rotation) for t in curTiles]
-        curTiles = [Pos(entry.pos.x+t.x,entry.pos.y+t.y,entry.pos.z+t.z) for t in curTiles]
+        curTiles = [entry.pos+t for t in curTiles]
         for curTile in curTiles:
             tileDict[curTile] = TileEntry(entry)
     return tileDict
@@ -1100,12 +1104,12 @@ def _getValidBlueprint(
 def _decodeBuildingBP(rawBuildings:list[dict[str,typing.Any]],icons:list[str|None]) -> BuildingBlueprint:
 
     entryList:list[BuildingEntry] = []
-    occupiedTiles:set[Pos] = set()
+    occupiedTiles:set[TileVector] = set()
 
     for building in rawBuildings:
 
         curTiles = [t.rotateCW(building["R"]) for t in buildings.allBuildingInternalVariants[building["T"]].tiles]
-        curTiles = [Pos(building["X"]+t.x,building["Y"]+t.y,building["L"]+t.z) for t in curTiles]
+        curTiles = [TileVector(building["X"],building["Y"],building["L"])+t for t in curTiles]
 
         for curTile in curTiles:
 
@@ -1116,7 +1120,7 @@ def _decodeBuildingBP(rawBuildings:list[dict[str,typing.Any]],icons:list[str|Non
 
     for b in rawBuildings:
         entryList.append(BuildingEntry(
-            Pos(b["X"],b["Y"],b["L"]),
+            TileVector(b["X"],b["Y"],b["L"]),
             Rotation(b["R"]),
             buildings.allBuildingInternalVariants[b["T"]],
             b["C"]
@@ -1127,12 +1131,12 @@ def _decodeBuildingBP(rawBuildings:list[dict[str,typing.Any]],icons:list[str|Non
 def _decodeIslandBP(rawIslands:list[dict[str,typing.Any]],icons:list[str|None]) -> IslandBlueprint:
 
     entryList:list[IslandEntry] = []
-    occupiedTiles:set[Pos] = set()
+    occupiedTiles:set[ChunkVector] = set()
 
     for island in rawIslands:
 
-        curTiles = [t.pos.rotateCW(island["R"]) for t in islands.allIslands[island["T"]].tiles]
-        curTiles = [Pos(island["X"]+t.x,island["Y"]+t.y,island["Z"]+t.z) for t in curTiles]
+        curTiles = [c.rotateCW(island["R"]) for c in islands.allIslands[island["T"]].chunks.keys()]
+        curTiles = [ChunkVector(island["X"],island["Y"],island["Z"])+t for t in curTiles]
 
         for curTile in curTiles:
 
@@ -1143,8 +1147,8 @@ def _decodeIslandBP(rawIslands:list[dict[str,typing.Any]],icons:list[str|None]) 
 
     for island in rawIslands:
 
-        islandEntryInfos:dict[str,Pos|int|islands.Island|IslandExtraData|None] = {
-            "pos" : Pos(island["X"],island["Y"],island["Z"]),
+        islandEntryInfos:dict[str,ChunkVector|int|islands.Island|IslandExtraData|None] = {
+            "pos" : ChunkVector(island["X"],island["Y"],island["Z"]),
             "r" : island["R"],
             "t" : islands.allIslands[island["T"]],
             "s" : island["S"]
@@ -1166,20 +1170,19 @@ def _decodeIslandBP(rawIslands:list[dict[str,typing.Any]],icons:list[str|None]) 
             raise BlueprintError(
                 f"Error while creating building blueprint representation of '{islandEntryInfos['t'].id}' at {islandEntryInfos['pos']} : {e}")
 
-        curIslandBuildArea = [a.rotateCW(islandEntryInfos["r"],ISLAND_ROTATION_CENTER) for a in islandEntryInfos["t"].totalBuildArea]
+        curIslandBuildableTiles = {t.rotateCW(islandEntryInfos["r"],ISLAND_ROTATION_CENTER) for t in islandEntryInfos["t"].totalBuildableTiles}
 
         for pos,b in curBuildingBP.toTileDict().items():
 
             curBuilding = b.referTo
 
-            inArea = False
-            for area in curIslandBuildArea:
-                if area.containsPos(pos) and (pos.z >= 0) and (pos.z < islands.ISLAND_SIZE):
-                    inArea = True
-                    break
-            if not inArea:
+            if (
+                (pos.z < 0)
+                or (pos.z >= utils.TILES_PER_CHUNK)
+                or (TileVector(pos.x,pos.y,0) not in curIslandBuildableTiles)
+            ):
                 raise BlueprintError(
-                    f"Error in '{islandEntryInfos['t'].id}' at {islandEntryInfos['pos']} : tile of building '{curBuilding.type.id}' at {pos} is not inside its platform build area")
+                    f"Error in '{islandEntryInfos['t'].id}' at {islandEntryInfos['pos']} : tile of building '{curBuilding.type.id}' at {pos} is not inside its platform buildable tiles")
 
         entryList.append(IslandEntry(
             islandEntryInfos["pos"],

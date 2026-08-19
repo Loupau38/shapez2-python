@@ -426,22 +426,22 @@ class GameObjectsSerializer:
 
 #region general game objects
 
-        if into == savegameObjects.GlobalChunkCoordinate:
-            return savegameObjects.GlobalChunkCoordinate(
+        if into == utils.GlobalChunkCoordinate:
+            return utils.GlobalChunkCoordinate(
                 reader.readInt(),
                 reader.readInt(),
                 reader.readShort()
             )
 
-        if into == savegameObjects.IslandTileCoordinate:
-            return savegameObjects.IslandTileCoordinate(
+        if into == utils.TileVector:
+            return utils.TileVector(
                 reader.readShort(),
                 reader.readShort(),
                 reader.readInt1()
             )
 
-        if into == savegameObjects.GlobalTileCoordinate:
-            return savegameObjects.GlobalTileCoordinate(
+        if into == utils.GlobalTileCoordinate:
+            return utils.GlobalTileCoordinate(
                 reader.readInt(),
                 reader.readInt(),
                 reader.readShort()
@@ -1183,19 +1183,19 @@ class GameObjectsSerializer:
 #region general game objects
 
         @f
-        def _(obj:savegameObjects.GlobalChunkCoordinate):
+        def _(obj:utils.GlobalChunkCoordinate):
             writer.writeInt(obj.x)
             writer.writeInt(obj.y)
             writer.writeShort(obj.z)
 
         @f
-        def _(obj:savegameObjects.IslandTileCoordinate):
+        def _(obj:utils.TileVector):
             writer.writeShort(obj.x)
             writer.writeShort(obj.y)
             writer.writeInt1(obj.z)
 
         @f
-        def _(obj:savegameObjects.GlobalTileCoordinate):
+        def _(obj:utils.GlobalTileCoordinate):
             writer.writeInt(obj.x)
             writer.writeInt(obj.y)
             writer.writeShort(obj.z)

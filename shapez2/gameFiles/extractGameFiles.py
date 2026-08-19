@@ -67,7 +67,9 @@ def main() -> None:
 
     for island in islandsRaw["Islands"]:
         for chunk in island["Chunks"]:
+            # SPZ2-6295
             if island["Id"] in nonBuildableIslands:
+                assert len(chunk["BuildableTiles"]) > 0, "Non-buildable island override on an already non-buildable island"
                 chunk["BuildableTiles"] = []
                 continue
             curRanges = []

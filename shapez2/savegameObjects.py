@@ -1,67 +1,14 @@
-from . import utils, islands, gameObjects, _gameObjectsSerializer
+from . import utils, gameObjects, _gameObjectsSerializer
 
 import typing
 from dataclasses import dataclass
 import enum
-import math
 
 #region misc
 
-class GlobalTileCoordinate(utils.Pos):
-
-    def toIslandTile(self,islandPos:"GlobalChunkCoordinate") -> "IslandTileCoordinate":
-        islandOrigin = islandPos.tileOrigin()
-        return IslandTileCoordinate(
-            self.x - islandOrigin.x,
-            self.y - islandOrigin.y,
-            self.z - islandOrigin.z
-        )
-
-    def containedInGlobalChunk(self) -> "GlobalChunkCoordinate":
-        return GlobalChunkCoordinate(
-            self.x // islands.ISLAND_SIZE,
-            self.y // islands.ISLAND_SIZE,
-            self.z // islands.ISLAND_SIZE
-        )
-
-class IslandTileCoordinate(utils.Pos):
-
-    def toGlobalTile(self,islandPos:"GlobalChunkCoordinate") -> GlobalTileCoordinate:
-        islandOrigin = islandPos.tileOrigin()
-        return GlobalTileCoordinate(
-            self.x + islandOrigin.x,
-            self.y + islandOrigin.y,
-            self.z + islandOrigin.z
-        )
-
-class GlobalChunkCoordinate(utils.Pos):
-
-    def tileOrigin(self) -> GlobalTileCoordinate:
-        return GlobalTileCoordinate(
-            self.x * islands.ISLAND_SIZE,
-            self.y * islands.ISLAND_SIZE,
-            self.z * islands.ISLAND_SIZE
-        )
-
-    def containedInSuperChunk(self) -> "SuperChunkCoordinate":
-        return SuperChunkCoordinate(
-            math.floor((self.x+(islands.CHUNKS_PER_SUPER_CHUNK/2))/islands.CHUNKS_PER_SUPER_CHUNK),
-            math.floor((self.y+(islands.CHUNKS_PER_SUPER_CHUNK/2))/islands.CHUNKS_PER_SUPER_CHUNK)
-        )
-
-class SuperChunkCoordinate(utils.Pos):
-    """z attribute shouldn't be used"""
-
-    def globalChunkOrigin(self) -> GlobalChunkCoordinate:
-        return GlobalChunkCoordinate(
-            (self.x*islands.CHUNKS_PER_SUPER_CHUNK) - (islands.CHUNKS_PER_SUPER_CHUNK//2),
-            (self.y*islands.CHUNKS_PER_SUPER_CHUNK) - (islands.CHUNKS_PER_SUPER_CHUNK//2),
-            0
-        )
-
 @dataclass
 class SidedCoordinate:
-    coordinate:GlobalChunkCoordinate
+    coordinate:utils.GlobalChunkCoordinate
     upsideDown:bool
 
 class ChunkDirection(enum.Enum):

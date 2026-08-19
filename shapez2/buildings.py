@@ -13,7 +13,7 @@ class BuildingVariant(utils.HasUniqueID):
 
 class BuildingInternalVariant(utils.HasUniqueID):
 
-    def __init__(self,id:str,tiles:list[utils.Pos],fromBuildingVariant:BuildingVariant) -> None:
+    def __init__(self,id:str,tiles:list[utils.TileVector],fromBuildingVariant:BuildingVariant) -> None:
         self.id = id
         self.tiles = tiles
         self.fromBuildingVariant = fromBuildingVariant
@@ -27,10 +27,7 @@ def _loadBuildings() -> tuple[dict[str,BuildingVariant],dict[str,BuildingInterna
     allInternalVariants = {}
 
     for variantRaw in buildingsRaw["Buildings"]:
-        if variantRaw.get("Title") is None:
-            curVariantTitle = f"@building-variant.{variantRaw["Id"]}.title"
-        else:
-            curVariantTitle = variantRaw["Title"]
+        curVariantTitle = f"@building-variant.{variantRaw["Id"]}.title"
         curVariant = BuildingVariant(
             variantRaw["Id"],
             translations.MaybeTranslationString(curVariantTitle)
@@ -39,7 +36,10 @@ def _loadBuildings() -> tuple[dict[str,BuildingVariant],dict[str,BuildingInterna
         for InternalVariantRaw in variantRaw["InternalVariants"]:
             curInternalVariant = BuildingInternalVariant(
                 InternalVariantRaw["Id"],
-                [utils.loadPos(tile) for tile in InternalVariantRaw["Tiles"]],
+                [
+                    utils.TileVector(tile["X"],tile["Y"],tile["Z"])
+                    for tile in InternalVariantRaw["Tiles"]
+                ],
                 curVariant
             )
             allInternalVariants[curInternalVariant.id] = curInternalVariant

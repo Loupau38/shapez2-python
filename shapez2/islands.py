@@ -1,10 +1,83 @@
 from . import utils, translations
-from .utils import Rotation, Pos, Size, Rect
+from .utils import TileVector, ChunkVector
 
 import json
 import importlib.resources
 from dataclasses import dataclass
 import typing
+
+ISLAND_TITLE_OVERRIDES = {
+    k : v for k,v in [
+        (f"{i}_{p}",f"@island-layout.Layout_{i}Node.title")
+        for i in ["SpaceBelt","SpacePipe","Rail"]
+        for p in [
+            "Forward",
+            "LeftTurn",
+            "RightTurn",
+            "LeftFwdSplitter",
+            "RightFwdSplitter",
+            "YSplitter",
+            "TripleSplitter",
+            "RightFwdMerger",
+            "LeftFwdMerger",
+            "YMerger",
+            "TripleMerger"
+        ]
+    ]+[
+        (f"{i}_{p}",f"@island-layout.Layout_{i}Node.title")
+        for i in ["SpaceBelt","SpacePipe"]
+        for p in [
+            "Lift1UpForward",
+            "Lift1UpLeft",
+            "Lift1UpRight",
+            "Lift1UpBackward",
+            "Lift1DownForward",
+            "Lift1DownLeft",
+            "Lift1DownRight",
+            "Lift1DownBackward",
+            "Lift2UpForward",
+            "Lift2UpLeft",
+            "Lift2UpRight",
+            "Lift2UpBackward",
+            "Lift2DownForward",
+            "Lift2DownLeft",
+            "Lift2DownRight",
+            "Lift2DownBackward"
+        ]
+    ]+[
+        (f"Rail_{p}","@island-layout.Layout_RailNode.title")
+        for p in ["YSplitterFlipped","TripleSplitterFlipped"]
+    ]+[
+        (f"Foundation_{type}{flipID}",f"{type} Foundation{flipText}")
+        for type in [
+            "1x1",
+            "1x2",
+            "1x3",
+            "1x4",
+            "2x2",
+            "2x3",
+            "2x4",
+            "3x3",
+            "T4",
+            "L3",
+            "L4",
+            "S4",
+            "C5"
+        ]
+        for flipID,flipText in [
+            ("",""),
+            ("_Flipped"," (Mirrored)")
+        ]
+    ]+[
+        ("Layout_TrainLoader_Shapes_Flipped","Shape Wagon Loader (Mirrored)"),
+        ("Layout_TrainUnloader_Shapes_Flipped","Shape Wagon Unloader (Mirrored)"),
+        ("Layout_TrainTransfer_Shape_Flipped","Shape Wagon Transfer (Mirrored)"),
+        ("Layout_TrainLoader_Fluids_Flipped","Fluid Wagon Loader (Mirrored)"),
+        ("Layout_TrainUnloader_Fluids_Flipped","Fluid Wagon Unloader (Mirrored)"),
+        ("Layout_TrainTransfer_Fluid_Flipped","Fluid Wagon Transfer (Mirrored)"),
+        ("Layout_TrainRollerCoasterLoop_Flipped","Rail Loop (Mirrored)"),
+    ]
+}
 
 ISLAND_GROUP_TITLE_OVERRIDES = {
     "FoundationGroup_1x1": "1x1 Foundation",
@@ -27,17 +100,9 @@ ISLAND_GROUP_TITLE_OVERRIDES = {
     "HUB": "Vortex"
 }
 
-ISLAND_SIZE = 20
-CHUNKS_PER_SUPER_CHUNK = 64 # not entierly sure where to put this
-
-DEFAULT_REMOVED_ISLAND_SIZE = 3
-REDUCED_REMOVED_ISLAND_SIZE = DEFAULT_REMOVED_ISLAND_SIZE + 1
-NOTCH_SIZE = 4
-
 @dataclass
-class IslandTile:
-    pos:Pos
-    buildArea:list[Rect]
+class IslandChunk:
+    buildableTiles:set[TileVector]
 
 class Island(utils.HasUniqueID):
 
@@ -45,22 +110,18 @@ class Island(utils.HasUniqueID):
         self,
         id:str,
         title:translations.MaybeTranslationString,
-        tiles:list[IslandTile],
+        chunks:dict[ChunkVector,IslandChunk],
         islandUnitCost:int,
         group:"IslandGroup"
     ) -> None:
         self.id = id
         self.title = title
-        self.tiles = tiles
+        self.chunks = chunks
         self.islandUnitCost = islandUnitCost
         self.group = group
-        self.totalBuildArea:list[Rect] = []
-        for tile in tiles:
-            for area in tile.buildArea:
-                self.totalBuildArea.append(Rect(
-                    Pos((tile.pos.x*ISLAND_SIZE)+area.topLeft.x,(tile.pos.y*ISLAND_SIZE)+area.topLeft.y),
-                    area.size
-                ))
+        self.totalBuildableTiles = set[TileVector]()
+        for pos,chunk in chunks.items():
+            self.totalBuildableTiles.update(pos.toTileVector()+t for t in chunk.buildableTiles)
 
 @dataclass(eq=False)
 class IslandGroup(utils.HasUniqueID):
@@ -70,262 +131,83 @@ class IslandGroup(utils.HasUniqueID):
 
 def _loadIslands() -> tuple[dict[str,Island],dict[str,IslandGroup]]:
 
-    class TileFormat(typing.TypedDict):
-        x:typing.NotRequired[int]
-        y:typing.NotRequired[int]
-        z:typing.NotRequired[int]
+    class PosFormat(typing.TypedDict):
+        x:int
+        y:int
+        z:int
 
-    class BAOFormat(typing.TypedDict):
-        Tile:TileFormat
-        Rects:list[list[int]]
+    class ChunkFormat(typing.TypedDict):
+        Pos:PosFormat
+        BuildableTiles:list[list[int]]
 
     class IslandFormat(typing.TypedDict):
         Id:str
-        Title:typing.NotRequired[str]
-        Tiles:list[TileFormat]
-        ReducedSides:typing.NotRequired[list[dict]]
-        BuildAreaOverride:typing.NotRequired[list[BAOFormat]]
-        NoBuildArea:typing.NotRequired[bool]
-        IslandUnitCost:typing.NotRequired[int]
-        Group:str
+        Title:str
+        Cost:int
+        GroupId:str
+        Chunks:list[ChunkFormat]
 
     class IslandGroupFormat(typing.TypedDict):
-        Common:IslandFormat
-        Islands:list[IslandFormat]
+        Id:str
+        Title:str
 
     class FileFormat(typing.TypedDict):
-        SimilarIslands:list[IslandGroupFormat]
         Islands:list[IslandFormat]
-        ExtraGroups:list[str]
-        GroupTitleOverrides:dict[str,str]
+        Groups:list[IslandGroupFormat]
 
     with importlib.resources.files(__package__).joinpath("gameFiles/islands.json").open(encoding="utf-8") as f:
         islandsRaw:FileFormat = json.load(f)
 
-    for islandGroup in islandsRaw["SimilarIslands"]:
-        for island in islandGroup["Islands"]:
-            newIsland = islandGroup["Common"].copy()
-            newIsland.update(island)
-            islandsRaw["Islands"].append(newIsland)
-
     allIslands:dict[str,Island] = {}
     allIslandGroups:dict[str,IslandGroup] = {}
 
-    def createIslandGroup(id:str) -> None:
-        if islandsRaw["GroupTitleOverrides"].get(id) is None:
-            islandGroupTitle = f"@island-group.{id}.title"
+    for group in islandsRaw["Groups"]:
+        groupId = group["Id"]
+        if groupId in ISLAND_GROUP_TITLE_OVERRIDES:
+            islandGroupTitle = ISLAND_GROUP_TITLE_OVERRIDES[groupId]
         else:
-            islandGroupTitle = islandsRaw["GroupTitleOverrides"][id]
-        allIslandGroups[id] = IslandGroup(
-            id,
+            islandGroupTitle = "@" + group["Title"]
+        allIslandGroups[groupId] = IslandGroup(
+            groupId,
             translations.MaybeTranslationString(islandGroupTitle),
             []
         )
 
     for islandRaw in islandsRaw["Islands"]:
 
-        curRemovedNotches:list[tuple[Pos,Rotation]] = [
-            ((rn:=utils.loadDirection(rnr))["pos"],rn["rot"]) for rnr in islandRaw.get("RemovedNotches",[])
-        ]
-        curReducedSides:list[tuple[Pos,Rotation]] = [
-            ((rs:=utils.loadDirection(rsr))["pos"],rs["rot"]) for rsr in islandRaw.get("ReducedSides",[])
-        ]
-        curBuildAreaOverrides:dict[Pos,list[Rect]] = {}
-        for baor in islandRaw.get("BuildAreaOverride",[]):
-            curBAORects = []
-            for baorr in baor["Rects"]:
-                curBAORects.append(Rect(
-                    Pos(baorr[0],baorr[1]),
-                    Size(baorr[2],baorr[3])
-                ))
-            curBuildAreaOverrides[utils.loadPos(baor["Tile"])] = curBAORects
-
-        curTiles = [utils.loadPos(tr) for tr in islandRaw["Tiles"]]
-
-        generatedIslandTiles = []
-
-        for tile in curTiles:
-
-            if islandRaw.get("NoBuildArea",False):
-                generatedIslandTiles.append(IslandTile(tile,[]))
-                continue
-
-            if curBuildAreaOverrides.get(tile) is not None:
-                generatedIslandTiles.append(IslandTile(tile,curBuildAreaOverrides[tile]))
-                continue
-
-            curCurReducedSides:dict[int,bool] = {
-                r1 : any(((p == tile) and (r2.value == r1)) for p,r2 in curReducedSides) for r1 in range(4)
-            }
-            curCurRemovedNotches:dict[int,bool] = {
-                r1 : any(((p == tile) and (r2.value == r1)) for p,r2 in curRemovedNotches) for r1 in range(4)
-            }
-
-            neighboringTiles:dict[Pos,bool] = {}
-            for x in range(-1,2):
-                for y in range(-1,2):
-                    neighboringTiles[Pos(x,y)] = Pos(tile.x+x,tile.y+y) in curTiles
-
-            buildAreas = []
-
-            eastUnconnected = ISLAND_SIZE - (REDUCED_REMOVED_ISLAND_SIZE if curCurReducedSides[0] else DEFAULT_REMOVED_ISLAND_SIZE) - 1
-            southUnconnected = ISLAND_SIZE - (REDUCED_REMOVED_ISLAND_SIZE if curCurReducedSides[1] else DEFAULT_REMOVED_ISLAND_SIZE) - 1
-            westUnconnected = REDUCED_REMOVED_ISLAND_SIZE if curCurReducedSides[2] else DEFAULT_REMOVED_ISLAND_SIZE
-            northUnconnected = REDUCED_REMOVED_ISLAND_SIZE if curCurReducedSides[3] else DEFAULT_REMOVED_ISLAND_SIZE
-
-            buildAreas.append(Rect(
-                Pos(westUnconnected,northUnconnected),
-                Size(eastUnconnected-westUnconnected+1,southUnconnected-northUnconnected+1)
-            ))
-
-            if ( # east side
-                (not curCurReducedSides[0]) and
-                (neighboringTiles[Pos(1,0)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE,northUnconnected),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,southUnconnected-northUnconnected+1)
-                ))
-
-            if ( # south side
-                (not curCurReducedSides[1]) and
-                (neighboringTiles[Pos(0,1)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(westUnconnected,ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE),
-                    Size(eastUnconnected-westUnconnected+1,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # west side
-                (not curCurReducedSides[2]) and
-                (neighboringTiles[Pos(-1,0)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(0,northUnconnected),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,southUnconnected-northUnconnected+1)
-                ))
-
-            if ( # north side
-                (not curCurReducedSides[3]) and
-                (neighboringTiles[Pos(0,-1)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(westUnconnected,0),
-                    Size(eastUnconnected-westUnconnected+1,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # north east corner
-                (not curCurReducedSides[0]) and
-                (not curCurReducedSides[3]) and
-                (neighboringTiles[Pos(0,-1)]) and
-                (neighboringTiles[Pos(1,0)]) and
-                (neighboringTiles[Pos(1,-1)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE,0),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # south east corner
-                (not curCurReducedSides[0]) and
-                (not curCurReducedSides[1]) and
-                (neighboringTiles[Pos(1,0)]) and
-                (neighboringTiles[Pos(1,1)]) and
-                (neighboringTiles[Pos(0,1)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE,ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # south west corner
-                (not curCurReducedSides[2]) and
-                (not curCurReducedSides[1]) and
-                (neighboringTiles[Pos(0,1)]) and
-                (neighboringTiles[Pos(-1,1)]) and
-                (neighboringTiles[Pos(-1,0)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(0,ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # north west corner
-                (not curCurReducedSides[2]) and
-                (not curCurReducedSides[3]) and
-                (neighboringTiles[Pos(-1,0)]) and
-                (neighboringTiles[Pos(-1,-1)]) and
-                (neighboringTiles[Pos(0,-1)])
-            ):
-                buildAreas.append(Rect(
-                    Pos(0,0),
-                    Size(DEFAULT_REMOVED_ISLAND_SIZE,DEFAULT_REMOVED_ISLAND_SIZE)
-                ))
-
-            if ( # east notch
-                (not neighboringTiles[Pos(1,0)]) and
-                (not curCurReducedSides[0]) and
-                (not curCurRemovedNotches[0])
-            ):
-                buildAreas.append(Rect(
-                    Pos(ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE,int((ISLAND_SIZE/2)-(NOTCH_SIZE/2))),
-                    Size(1,NOTCH_SIZE)
-                ))
-
-            if ( # south notch
-                (not neighboringTiles[Pos(0,1)]) and
-                (not curCurReducedSides[1]) and
-                (not curCurRemovedNotches[1])
-            ):
-                buildAreas.append(Rect(
-                    Pos(int((ISLAND_SIZE/2)-(NOTCH_SIZE/2)),ISLAND_SIZE-DEFAULT_REMOVED_ISLAND_SIZE),
-                    Size(NOTCH_SIZE,1)
-                ))
-
-            if ( # west notch
-                (not neighboringTiles[Pos(-1,0)]) and
-                (not curCurReducedSides[2]) and
-                (not curCurRemovedNotches[2])
-            ):
-                buildAreas.append(Rect(
-                    Pos(DEFAULT_REMOVED_ISLAND_SIZE-1,int((ISLAND_SIZE/2)-(NOTCH_SIZE/2))),
-                    Size(1,NOTCH_SIZE)
-                ))
-
-            if ( # north notch
-                (not neighboringTiles[Pos(0,-1)]) and
-                (not curCurReducedSides[3]) and
-                (not curCurRemovedNotches[3])
-            ):
-                buildAreas.append(Rect(
-                    Pos(int((ISLAND_SIZE/2)-(NOTCH_SIZE/2)),DEFAULT_REMOVED_ISLAND_SIZE-1),
-                    Size(NOTCH_SIZE,1)
-                ))
-
-            generatedIslandTiles.append(IslandTile(tile,buildAreas))
-
-        if islandRaw.get("Title") is None:
-            islandTitle = f"@island-layout.{islandRaw['Id']}.title"
+        islandId = islandRaw["Id"]
+        if islandId in ISLAND_TITLE_OVERRIDES:
+            islandTitle = ISLAND_TITLE_OVERRIDES[islandId]
         else:
-            islandTitle = islandRaw["Title"]
+            islandTitle = "@" + islandRaw["Title"]
 
-        curGroupId = islandRaw["Group"]
-        if allIslandGroups.get(curGroupId) is None:
-            createIslandGroup(curGroupId)
-        curIslandGroup = allIslandGroups[curGroupId]
+        curIslandGroup = allIslandGroups[islandRaw["Group"]]
+
+        curChunks:dict[ChunkVector,IslandChunk] = {}
+        for chunkRaw in islandRaw["Chunks"]:
+            chunkPos = ChunkVector(
+                chunkRaw["Pos"]["x"],
+                chunkRaw["Pos"]["y"],
+                chunkRaw["Pos"]["z"]
+            )
+            rawTiles:list[int] = []
+            for tileRange in chunkRaw["BuildableTiles"]:
+                rawTiles.extend(range(tileRange[0],tileRange[1]+1,tileRange[2]))
+            chunkTiles = set[TileVector]()
+            for rawTile in rawTiles:
+                y, x = divmod(rawTile,utils.TILES_PER_CHUNK)
+                chunkTiles.add(TileVector(x,y,0))
+            curChunks[chunkPos] = IslandChunk(chunkTiles)
 
         curIsland = Island(
-            islandRaw["Id"],
+            islandId,
             translations.MaybeTranslationString(islandTitle),
-            generatedIslandTiles,
-            islandRaw.get("IslandUnitCost",len(generatedIslandTiles)*2),
+            curChunks,
+            islandRaw["Cost"],
             curIslandGroup
         )
-        allIslands[islandRaw["Id"]] = curIsland
+        allIslands[islandId] = curIsland
         curIslandGroup.islands.append(curIsland)
-
-    for groupId in islandsRaw["ExtraGroups"]:
-        createIslandGroup(groupId)
 
     return allIslands, allIslandGroups
 

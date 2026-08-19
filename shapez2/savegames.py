@@ -31,7 +31,7 @@ import collections.abc
 @dataclass
 class PlacedBuilding:
     type:buildings.BuildingInternalVariant
-    pos:savegameObjects.IslandTileCoordinate
+    pos:utils.TileVector
     rotation:utils.Rotation
     configuration:gameObjects.GenericBuildingConfig|None
     simulationState:savegameObjects.GenericSimulationState|None=None
@@ -39,7 +39,7 @@ class PlacedBuilding:
 @dataclass
 class PlacedIsland:
     type:islands.Island
-    pos:savegameObjects.GlobalChunkCoordinate
+    pos:utils.GlobalChunkCoordinate
     rotation:utils.Rotation
     configuration:gameObjects.GenericIslandConfig|None
     placedBuildings:list[PlacedBuilding]
@@ -56,7 +56,7 @@ def _decodeBuildings(
     def decodeBuilding() -> None:
 
         reader.assertCheckpoint(Checkpoint.building)
-        buildingPos = serializer.deserialize(reader,savegameObjects.IslandTileCoordinate)
+        buildingPos = serializer.deserialize(reader,utils.TileVector)
         buildingRotation = serializer.deserialize(reader,utils.Rotation)
         buildingDefinition = serializer.deserialize(reader,buildings.BuildingInternalVariant)
         buildingConfig = None
@@ -97,7 +97,7 @@ def _decodeIslands(
     def decodeIsland() -> None:
 
         reader.assertCheckpoint(Checkpoint.island)
-        islandPos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
+        islandPos = serializer.deserialize(reader,utils.GlobalChunkCoordinate)
         islandDefinition = serializer.deserialize(reader,islands.Island)
         islandRotation = serializer.deserialize(reader,utils.Rotation)
         islandConfig = None
@@ -142,13 +142,13 @@ def _decodeIslands(
 def _decodeIslandStates(
     reader:BinaryStreamReaderWithStringLUT,
     serializer:GameObjectsSerializer,
-    islandsMap:dict[savegameObjects.GlobalChunkCoordinate,PlacedIsland],
-    buildingsMap:dict[savegameObjects.GlobalTileCoordinate,PlacedBuilding]
+    islandsMap:dict[utils.GlobalChunkCoordinate,PlacedIsland],
+    buildingsMap:dict[utils.GlobalTileCoordinate,PlacedBuilding]
 ) -> None:
 
     def decodeIsland() -> None:
 
-        islandPos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
+        islandPos = serializer.deserialize(reader,utils.GlobalChunkCoordinate)
         islandDefinition = serializer.deserialize(reader,islands.Island)
 
         placedIsland = islandsMap.get(islandPos)
@@ -167,7 +167,7 @@ def _decodeIslandStates(
 
     def decodeBuilding() -> None:
 
-        buildingPos = serializer.deserialize(reader,savegameObjects.GlobalTileCoordinate)
+        buildingPos = serializer.deserialize(reader,utils.GlobalTileCoordinate)
         buildingDefinition = serializer.deserialize(reader,buildings.BuildingInternalVariant)
 
         placedBuilding = buildingsMap.get(buildingPos)
@@ -256,7 +256,7 @@ def _encodeIslandStates(
 ) -> None:
 
     writer.writeInt(len(islands))
-    placedBuildings:list[tuple[savegameObjects.GlobalTileCoordinate,PlacedBuilding]] = []
+    placedBuildings:list[tuple[utils.GlobalTileCoordinate,PlacedBuilding]] = []
 
     for island in islands:
 
@@ -310,8 +310,8 @@ class WagonState(enum.Enum):
 
 @dataclass
 class WagonNavigationData:
-    incomingPosition:savegameObjects.GlobalChunkCoordinate
-    outgoingPosition:savegameObjects.GlobalChunkCoordinate
+    incomingPosition:utils.GlobalChunkCoordinate
+    outgoingPosition:utils.GlobalChunkCoordinate
     incomingDirection:savegameObjects.ChunkDirection
     outgoingDirection:savegameObjects.ChunkDirection
     upsideDown:bool
@@ -357,7 +357,7 @@ class TrainNavigationState:
 @dataclass
 class TrainState:
     navigationState:TrainNavigationState
-    parentProducerPosition:savegameObjects.GlobalChunkCoordinate
+    parentProducerPosition:utils.GlobalChunkCoordinate
 
 @dataclass
 class TrainsSimulation:
@@ -402,8 +402,8 @@ def _decodeTrains(
                     for i in range(reader.readInt()):
                         try:
                             wagons.append(WagonNavigationData(
-                                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
-                                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
+                                serializer.deserialize(reader,utils.GlobalChunkCoordinate),
+                                serializer.deserialize(reader,utils.GlobalChunkCoordinate),
                                 getSerializedEnum(savegameObjects.ChunkDirection),
                                 getSerializedEnum(savegameObjects.ChunkDirection),
                                 reader.readBool(),
@@ -432,7 +432,7 @@ def _decodeTrains(
                     ),
                     [
                         savegameObjects.SidedCoordinate(
-                            serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate),
+                            serializer.deserialize(reader,utils.GlobalChunkCoordinate),
                             reader.readBool()
                         )
                         for _ in range(reader.readInt())
@@ -441,7 +441,7 @@ def _decodeTrains(
 
             curTrain = TrainState(
                 navState,
-                serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
+                serializer.deserialize(reader,utils.GlobalChunkCoordinate)
             )
 
             for text,dataType in (
@@ -564,9 +564,9 @@ class CargoExchangingController[
     TUnloader:savegameObjects.GenericCargoExchanger[TWagonData],
     TTransferrer:savegameObjects.GenericCargoTransferrer[TWagonData]
 ]:
-    cargoLoaderMap:dict[savegameObjects.GlobalChunkCoordinate,TLoader]
-    cargoUnloaderMap:dict[savegameObjects.GlobalChunkCoordinate,TUnloader]
-    cargoTransferrerMap:dict[savegameObjects.GlobalChunkCoordinate,TTransferrer]
+    cargoLoaderMap:dict[utils.GlobalChunkCoordinate,TLoader]
+    cargoUnloaderMap:dict[utils.GlobalChunkCoordinate,TUnloader]
+    cargoTransferrerMap:dict[utils.GlobalChunkCoordinate,TTransferrer]
 
 @dataclass
 class CargoExchangingOrchestrator:
@@ -635,7 +635,7 @@ def _decodeCargo(
 
                     try:
 
-                        pos = serializer.deserialize(reader,savegameObjects.GlobalChunkCoordinate)
+                        pos = serializer.deserialize(reader,utils.GlobalChunkCoordinate)
 
                         @reader.readBlob
                         def _():
@@ -665,7 +665,7 @@ def _encodeCargo(
         ]:
 
             cargoMap:dict[
-                savegameObjects.GlobalChunkCoordinate,
+                utils.GlobalChunkCoordinate,
                 savegameObjects.TrainCargoLoaderSimulation
                 | savegameObjects.TrainCargoUnloaderSimulation
                 | savegameObjects.TrainCargoTransferrerSimulation
@@ -737,8 +737,8 @@ def _encodeSimulationState(
 
 @dataclass
 class GenericMapResourceSource:
-    origin:savegameObjects.GlobalChunkCoordinate
-    chunks:list[utils.Pos] # ChunkVector ingame
+    origin:utils.GlobalChunkCoordinate
+    chunks:list[utils.ChunkVector]
 
 @dataclass
 class ShapeMapResourceSource(GenericMapResourceSource):
@@ -750,12 +750,12 @@ class FluidMapResourceSource(GenericMapResourceSource):
 
 @dataclass
 class MapSuperChunk:
-    pos:savegameObjects.SuperChunkCoordinate
+    pos:utils.SuperChunkCoordinate
     resources:list[GenericMapResourceSource]
 
 @dataclass
 class GameResourcesMap:
-    superChunks:dict[savegameObjects.SuperChunkCoordinate,MapSuperChunk]
+    superChunks:dict[utils.SuperChunkCoordinate,MapSuperChunk]
 
 def _decodeResourceChunks(
     reader:BinaryStreamReaderWithStringLUT,
@@ -768,7 +768,7 @@ def _decodeResourceChunks(
         try:
 
             reader.assertCheckpoint(Checkpoint.superChunkStart)
-            superChunkPos = savegameObjects.SuperChunkCoordinate(
+            superChunkPos = utils.SuperChunkCoordinate(
                 reader.readInt(),
                 reader.readInt()
             )
@@ -794,7 +794,7 @@ def _decodeResourceChunks(
 
                         resourceOrigin = serializer.deserialize(
                             reader,
-                            savegameObjects.GlobalChunkCoordinate
+                            utils.GlobalChunkCoordinate
                         )
                         numDefinitions = reader.readInt()
                         definitions:list[gameObjects.Shape] = []
@@ -810,10 +810,10 @@ def _decodeResourceChunks(
                                     f"Error while reading shape definition #{defIndex} : {e}"
                                 )
 
-                        chunks:list[utils.Pos] = []
+                        chunks:list[utils.ChunkVector] = []
                         for chunkIndex in range(numDefinitions):
                             try:
-                                chunks.append(utils.Pos(
+                                chunks.append(utils.ChunkVector(
                                     reader.readInt(),
                                     reader.readInt(),
                                     0
@@ -847,16 +847,16 @@ def _decodeResourceChunks(
 
                         resourceOrigin = serializer.deserialize(
                             reader,
-                            savegameObjects.GlobalChunkCoordinate
+                            utils.GlobalChunkCoordinate
                         )
 
                         fluid = serializer.deserialize(reader,gameObjects.GenericFluid)
                         numChunks = reader.readInt()
-                        chunks:list[utils.Pos] = []
+                        chunks:list[utils.ChunkVector] = []
 
                         for chunkIndex in range(numChunks):
                             try:
-                                chunks.append(utils.Pos(
+                                chunks.append(utils.ChunkVector(
                                     reader.readInt(),
                                     reader.readInt(),
                                     0
@@ -1809,7 +1809,7 @@ def decodeSavegame(file:str|os.PathLike|typing.IO[bytes]) -> Savegame:
 
     islandsMap = {i.pos:i for i in decodedIslands}
 
-    buildingsMap:dict[savegameObjects.GlobalTileCoordinate,PlacedBuilding] = {}
+    buildingsMap:dict[utils.GlobalTileCoordinate,PlacedBuilding] = {}
     for decodedIsland in decodedIslands:
         for decodedBuilding in decodedIsland.placedBuildings:
             buildingsMap[
